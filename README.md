@@ -34,11 +34,9 @@ use lnsocket::ln::peer_channel_encryptor::{PeerChannelEncryptor, NextNoiseStep};
 use bitcoin::secp256k1::{PublicKey, SecretKey, Secp256k1};
 
 // Create a new connection to a node
-let node_id = PublicKey::from_str("02eec7245d6b7d2ccb30380bfbe2a3648cd7a942653f5aa340edcea1f283686619")?;
-let ephemeral_key = SecretKey::new(&mut rand::thread_rng());
-let secp_ctx = Secp256k1::new();
-
-// .. TBD ...
+let their_pubkey = PublicKey::from_str("03f3c108ccd536b8526841f0a5c58212bb9e6584a1eb493080e7c1cc34f82dad71")?;
+let our_key = SecretKey::new(&mut rand::thread_rng());
+let lnsocket = LNSocket::connect(our_key, their_pubkey).await?;
 ```
 
 ## Status

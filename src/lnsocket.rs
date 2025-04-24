@@ -2,7 +2,7 @@ use crate::{Error, ln::peer_channel_encryptor::PeerChannelEncryptor};
 use bitcoin::secp256k1::{PublicKey, Secp256k1, SecretKey, SignOnly, rand};
 use std::net::SocketAddr;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpSocket;
+use tokio::net::{TcpSocket, lookup_host};
 
 const ACT_TWO_SIZE: usize = 50;
 
@@ -14,15 +14,25 @@ pub struct LNSocket {
 }
 
 impl LNSocket {
-    pub async fn connect_and_init(
+    pub async fn connect(
         our_key: SecretKey,
         their_pubkey: PublicKey,
         addr: &str,
     ) -> Result<LNSocket, Error> {
         let secp_ctx = Secp256k1::signing_only();
 
-        let addr: SocketAddr = addr.parse()?;
-        let socket = TcpSocket::new_v4()?;
+        // Look up host to resolve domain name to IP address
+        let addr = lookup_host(addr)
+            .await?
+            .next()
+            .ok_or_else(|| Error::DnsError)?;
+
+        let socket = if addr.is_ipv4() {
+            TcpSocket::new_v4()?
+        } else {
+            TcpSocket::new_v6()?
+        };
+
         let mut stream = socket.connect(addr).await?;
         let ephemeral = SecretKey::new(&mut rand::thread_rng());
 
@@ -43,5 +53,24 @@ impl LNSocket {
             their_pubkey,
             channel,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::str::FromStr;
+
+    #[tokio::test]
+    async fn test_connection() {
+        let key = SecretKey::new(&mut rand::thread_rng());
+        let their_key = PublicKey::from_str(
+            "03f3c108ccd536b8526841f0a5c58212bb9e6584a1eb493080e7c1cc34f82dad71",
+        )
+        .unwrap();
+        if let Err(err) = LNSocket::connect(key, their_key, "ln.damus.io:9735").await {
+            eprintln!("connection failed: {err}");
+            assert!(false);
+        }
     }
 }
