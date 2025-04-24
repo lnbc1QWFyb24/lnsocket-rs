@@ -24,8 +24,6 @@ use crate::crypto::chacha20poly1305rfc::ChaCha20Poly1305RFC;
 use crate::crypto::utils::hkdf_extract_expand_twice;
 use crate::util::ser::VecWriter;
 
-use core::ops::Deref;
-
 /// Maximum Lightning message data length according to
 /// [BOLT-8](https://github.com/lightning/bolts/blob/v1.0/08-transport.md#lightning-message-specification)
 /// and [BOLT-1](https://github.com/lightning/bolts/blob/master/01-messaging.md#lightning-message-format):
@@ -112,30 +110,6 @@ impl PeerChannelEncryptor {
             noise_state: NoiseState::InProgress {
                 state: NoiseStep::PreActOne,
                 directional_state: DirectionalNoiseState::Outbound { ie: ephemeral_key },
-                bidirectional_state: BidirectionalNoiseState { h, ck: NOISE_CK },
-            },
-        }
-    }
-
-    pub fn new_inbound<NS: Deref, C: Signing>(
-        secp_ctx: &Secp256k1<C>,
-        node_signer: &SecretKey,
-    ) -> PeerChannelEncryptor {
-        let mut sha = Sha256::engine();
-        sha.input(&NOISE_H);
-        let our_node_id = node_signer.public_key(secp_ctx);
-        sha.input(&our_node_id.serialize()[..]);
-        let h = Sha256::from_engine(sha).to_byte_array();
-
-        PeerChannelEncryptor {
-            their_node_id: None,
-            noise_state: NoiseState::InProgress {
-                state: NoiseStep::PreActOne,
-                directional_state: DirectionalNoiseState::Inbound {
-                    ie: None,
-                    re: None,
-                    temp_k2: None,
-                },
                 bidirectional_state: BidirectionalNoiseState { h, ck: NOISE_CK },
             },
         }
@@ -378,11 +352,9 @@ impl PeerChannelEncryptor {
     pub fn process_act_two<C: Signing>(
         &mut self,
         secp_ctx: &Secp256k1<C>,
-        act_two: &[u8],
+        act_two: &[u8; 50],
         node_signer: &SecretKey,
-    ) -> Result<([u8; 66], PublicKey), LightningError> {
-        assert_eq!(act_two.len(), 50);
-
+    ) -> Result<[u8; 66], LightningError> {
         let final_hkdf;
         let ck;
         let res: [u8; 66] = match self.noise_state {
@@ -444,7 +416,7 @@ impl PeerChannelEncryptor {
             rck: ck,
         };
 
-        Ok((res, self.their_node_id.unwrap().clone()))
+        Ok(res)
     }
 
     pub fn process_act_three(&mut self, act_three: &[u8]) -> Result<PublicKey, LightningError> {

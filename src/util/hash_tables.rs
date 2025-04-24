@@ -3,8 +3,6 @@
 //!
 //! This module simply re-exports the `HashMap` used in LDK for public consumption.
 
-pub use hashbrown::hash_map;
-
 mod hashbrown_tables {
     mod hasher {
         pub use std::collections::hash_map::RandomState;

@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bitcoin = "0.32.2"
+bitcoin = { version = "0.32.5", features = ["rand", "rand-std"] }
 lightning-types = "0.2.0"
 hashbrown = { version = "0.13", default-features = false }
+tokio = { version = "1", features = [ "rt", "net", "io-util" ] }
 

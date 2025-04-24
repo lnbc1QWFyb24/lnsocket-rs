@@ -7,12 +7,17 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-pub mod crypto;
-pub mod io;
-pub mod ln;
-pub mod sign;
-pub mod socket_addr;
-pub mod util;
+mod crypto;
+pub mod error;
+mod io;
+mod ln;
+pub mod lnsocket;
+mod sign;
+mod socket_addr;
+mod util;
+
+pub use error::Error;
+pub use lnsocket::LNSocket;
 
 mod prelude {
     #![allow(unused_imports)]

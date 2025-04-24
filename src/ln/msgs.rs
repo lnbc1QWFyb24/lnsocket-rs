@@ -38,18 +38,6 @@ pub enum DecodeError {
     BadLengthDescriptor,
     /// Error from [`crate::io`].
     Io(bitcoin::io::ErrorKind),
-    /// The message included zlib-compressed values, which we don't support.
-    UnsupportedCompression,
-    /// Value is validly encoded but is dangerous to use.
-    ///
-    /// This is used for things like [`ChannelManager`] deserialization where we want to ensure
-    /// that we don't use a [`ChannelManager`] which is in out of sync with the [`ChannelMonitor`].
-    /// This indicates that there is a critical implementation flaw in the storage implementation
-    /// and it's unsafe to continue.
-    ///
-    /// [`ChannelManager`]: crate::ln::channelmanager::ChannelManager
-    /// [`ChannelMonitor`]: crate::chain::channelmonitor::ChannelMonitor
-    DangerousValue,
 }
 
 impl From<bitcoin::io::Error> for DecodeError {
