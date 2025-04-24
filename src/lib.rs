@@ -39,11 +39,10 @@ pub mod io_extras {
     /// Creates an instance of a writer which will successfully consume all data.
     pub use bitcoin::io::sink;
 
-    pub fn copy<R: ?Sized, W: ?Sized>(reader: &mut R, writer: &mut W) -> Result<u64, io::Error>
-    where
-        R: Read,
-        W: Write,
-    {
+    pub fn copy<R: Read + ?Sized, W: Write + ?Sized>(
+        reader: &mut R,
+        writer: &mut W,
+    ) -> Result<u64, io::Error> {
         let mut count = 0;
         let mut buf = [0u8; 64];
 

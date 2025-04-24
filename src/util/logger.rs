@@ -19,7 +19,7 @@ use core::cmp;
 use core::fmt;
 use core::ops::Deref;
 
-static LOG_LEVEL_NAMES: [&'static str; 6] = ["GOSSIP", "TRACE", "DEBUG", "INFO", "WARN", "ERROR"];
+static LOG_LEVEL_NAMES: [&str; 6] = ["GOSSIP", "TRACE", "DEBUG", "INFO", "WARN", "ERROR"];
 
 /// An enum representing the available verbosity levels of the logger.
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]

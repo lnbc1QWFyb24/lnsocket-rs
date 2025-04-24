@@ -326,7 +326,7 @@ impl PeerChannelEncryptor {
         }
     }
 
-    pub fn process_act_one_with_keys<C: secp256k1::Signing, NS: Deref>(
+    pub fn process_act_one_with_keys<C: secp256k1::Signing>(
         &mut self,
         act_one: &[u8],
         node_signer: &SecretKey,
@@ -375,7 +375,7 @@ impl PeerChannelEncryptor {
         }
     }
 
-    pub fn process_act_two<NS: Deref, C: Signing>(
+    pub fn process_act_two<C: Signing>(
         &mut self,
         secp_ctx: &Secp256k1<C>,
         act_two: &[u8],

@@ -10,10 +10,10 @@
 use crate::prelude::*;
 
 /// RFC4648 encoding table
-const RFC4648_ALPHABET: &'static [u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+const RFC4648_ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
 /// Zbase encoding alphabet
-const ZBASE_ALPHABET: &'static [u8] = b"ybndrfg8ejkmcpqxot1uwisza345h769";
+const ZBASE_ALPHABET: &[u8] = b"ybndrfg8ejkmcpqxot1uwisza345h769";
 
 /// RFC4648 decoding table
 const RFC4648_INV_ALPHABET: [i8; 43] = [

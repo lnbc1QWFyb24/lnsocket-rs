@@ -164,11 +164,7 @@ mod real_chachapoly {
 
             let mut calc_tag = [0u8; 16];
             self.mac.raw_result(&mut calc_tag);
-            if fixed_time_eq(&calc_tag, tag) {
-                true
-            } else {
-                false
-            }
+            fixed_time_eq(&calc_tag, tag)
         }
     }
 }

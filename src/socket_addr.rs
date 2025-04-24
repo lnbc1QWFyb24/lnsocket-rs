@@ -240,10 +240,10 @@ impl std::net::ToSocketAddrs for SocketAddress {
     }
 }
 
+/*
 /// Parses an OnionV3 host and port into a [`SocketAddress::OnionV3`].
 ///
 /// The host part must end with ".onion".
-/*
 pub fn parse_onion_address(
     host: &str,
     port: u16,
