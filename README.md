@@ -30,8 +30,8 @@ lnsocket = "0.1.0"
 Basic example (API details may change):
 
 ```rust
-use lnsocket::ln::peer_channel_encryptor::{PeerChannelEncryptor, NextNoiseStep};
-use bitcoin::secp256k1::{PublicKey, SecretKey, Secp256k1};
+use lnsocket::LNSocket;
+use bitcoin::secp256k1::{PublicKey, SecretKey};
 
 // Create a new connection to a node
 let their_pubkey = PublicKey::from_str("03f3c108ccd536b8526841f0a5c58212bb9e6584a1eb493080e7c1cc34f82dad71")?;
