@@ -3,10 +3,6 @@ use bitcoin::hashes::sha256::Hash as Sha256;
 use bitcoin::hashes::{Hash, HashEngine};
 use bitcoin::secp256k1::{Message, Secp256k1, SecretKey, Signing, ecdsa::Signature};
 
-use crate::sign::EntropySource;
-
-use core::ops::Deref;
-
 macro_rules! hkdf_extract_expand {
     ($salt: expr, $ikm: expr) => {{
         let mut hmac = HmacEngine::<Sha256>::new($salt);
@@ -65,21 +61,5 @@ pub fn _hkdf_extract_expand_6x(
 #[inline]
 pub fn _sign<C: Signing>(ctx: &Secp256k1<C>, msg: &Message, sk: &SecretKey) -> Signature {
     let sig = ctx.sign_ecdsa(msg, sk);
-    sig
-}
-
-#[inline]
-#[allow(unused_variables)]
-pub fn _sign_with_aux_rand<C: Signing, ES: Deref>(
-    ctx: &Secp256k1<C>,
-    msg: &Message,
-    sk: &SecretKey,
-    entropy_source: &ES,
-) -> Signature
-where
-    ES::Target: EntropySource,
-{
-    let sig = ctx.sign_ecdsa_with_noncedata(msg, sk, &entropy_source.get_secure_random_bytes());
-    let sig = _sign(ctx, msg, sk);
     sig
 }

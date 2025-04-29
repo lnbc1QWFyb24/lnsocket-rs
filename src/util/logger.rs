@@ -110,25 +110,6 @@ pub struct Record<$($args)?> {
 	pub line: u32,
 }
 
-impl<$($args)?> Record<$($args)?> {
-	/// Returns a new Record.
-	///
-	/// This is not exported to bindings users as fmt can't be used in C
-	#[inline]
-	pub fn new<$($nonstruct_args)?>(
-		level: Level, peer_id: Option<PublicKey>,
-		args: fmt::Arguments<'a>, module_path: &'static str, file: &'static str, line: u32
-	) -> Record<$($args)?> {
-		Record {
-			level,
-			peer_id,
-			args,
-			module_path,
-			file,
-			line,
-		}
-	}
-}
 } }
 
 impl_record!('a, );
@@ -162,16 +143,6 @@ where
             record.peer_id = self.peer_id
         };
         self.logger.log(record)
-    }
-}
-
-impl<'a, L: Deref> WithContext<'a, L>
-where
-    L::Target: Logger,
-{
-    /// Wraps the given logger, providing additional context to any logged records.
-    pub fn from(logger: &'a L, peer_id: Option<PublicKey>) -> Self {
-        WithContext { logger, peer_id }
     }
 }
 

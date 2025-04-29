@@ -1,14 +1,16 @@
-use crate::ln::msgs::LightningError;
+use crate::ln::msgs::{DecodeError, LightningError};
 use std::fmt;
 use std::io;
 use std::net::AddrParseError;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum Error {
     NotConnected,
     DnsError,
     Io(io::ErrorKind),
+    Json(serde_json::Error),
     Lightning(LightningError),
+    Decode(DecodeError),
     AddrParse(std::net::AddrParseError),
 }
 
@@ -19,6 +21,8 @@ impl fmt::Display for Error {
             Error::DnsError => write!(f, "Failed to resolve hostname"),
             Error::Io(kind) => write!(f, "I/O error: {}", kind),
             Error::Lightning(err) => write!(f, "Lightning error: {:?}", err),
+            Error::Decode(err) => write!(f, "decoding error: {:?}", err),
+            Error::Json(err) => write!(f, "json error: {:?}", err),
             Error::AddrParse(err) => write!(f, "Address parse error: {}", err),
         }
     }
@@ -27,6 +31,18 @@ impl fmt::Display for Error {
 impl From<io::Error> for Error {
     fn from(err: io::Error) -> Self {
         Self::Io(err.kind())
+    }
+}
+
+impl From<serde_json::Error> for Error {
+    fn from(err: serde_json::Error) -> Self {
+        Self::Json(err)
+    }
+}
+
+impl From<DecodeError> for Error {
+    fn from(decode: DecodeError) -> Self {
+        Self::Decode(decode)
     }
 }
 

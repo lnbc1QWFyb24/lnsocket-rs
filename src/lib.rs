@@ -7,9 +7,9 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+pub mod commando;
 mod crypto;
 pub mod error;
-mod io;
 mod ln;
 pub mod lnsocket;
 mod sign;
@@ -39,10 +39,10 @@ mod prelude {
 ///
 /// This is not exported to bindings users as it is not intended for public consumption.
 pub mod io_extras {
-    use bitcoin::io::{self, Read, Write};
+    use std::io::{self, Read, Write};
 
     /// Creates an instance of a writer which will successfully consume all data.
-    pub use bitcoin::io::sink;
+    pub use std::io::sink;
 
     pub fn copy<R: Read + ?Sized, W: Write + ?Sized>(
         reader: &mut R,

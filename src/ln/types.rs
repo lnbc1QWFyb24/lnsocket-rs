@@ -9,9 +9,9 @@
 
 //! Various wrapper types (most around 32-byte arrays) for use in lightning.
 
-use crate::io;
 use crate::ln::msgs::DecodeError;
 use crate::util::ser::{Readable, Writeable, Writer};
+use std::io;
 
 #[allow(unused_imports)]
 use crate::prelude::*;

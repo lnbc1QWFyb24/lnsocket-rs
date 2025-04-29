@@ -3,10 +3,11 @@ use crate::util::{
     ser::{LengthLimitedRead, LengthReadable, Readable, WithoutLength, Writeable, Writer},
 };
 use crate::{
-    decode_tlv_stream, encode_tlv_stream, io, ln::types::ChannelId, socket_addr::SocketAddress,
+    encode_tlv_stream, ln::types::ChannelId, socket_addr::SocketAddress,
 };
 use bitcoin::blockdata::constants::ChainHash;
 use lightning_types::features::InitFeatures;
+use std::io;
 
 /// An Err type for failure to process messages.
 #[derive(Clone, Debug)]
@@ -37,11 +38,11 @@ pub enum DecodeError {
     /// A length descriptor in the packet didn't describe the later data correctly.
     BadLengthDescriptor,
     /// Error from [`crate::io`].
-    Io(bitcoin::io::ErrorKind),
+    Io(std::io::ErrorKind),
 }
 
-impl From<bitcoin::io::Error> for DecodeError {
-    fn from(err: bitcoin::io::Error) -> Self {
+impl From<std::io::Error> for DecodeError {
+    fn from(err: std::io::Error) -> Self {
         DecodeError::Io(err.kind())
     }
 }
@@ -52,7 +53,8 @@ impl From<bitcoin::io::Error> for DecodeError {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Init {
     /// The relevant features which the sender supports.
-    pub features: InitFeatures,
+    pub global_features: Vec<u8>,
+    pub features: Vec<u8>,
     /// Indicates chains the sender is interested in.
     ///
     /// If there are no common chains, the connection will be closed.
@@ -165,10 +167,11 @@ pub enum ErrorAction {
 }
 
 impl Writeable for Init {
-    fn write<W: Writer>(&self, w: &mut W) -> Result<(), io::Error> {
+    fn write<W: Writer>(&self, w: &mut W) -> Result<(), std::io::Error> {
         // global_features gets the bottom 13 bits of our features, and local_features gets all of
         // our relevant feature bits. This keeps us compatible with old nodes.
-        write_features_up_to_13(w, self.features.le_flags())?;
+        //write_features_up_to_13(w, self.features.le_flags())?;
+        self.global_features.write(w)?;
         self.features.write(w)?;
         encode_tlv_stream!(w, {
             (1, self.networks.as_ref().map(|n| WithoutLength(n)), option),
@@ -178,6 +181,7 @@ impl Writeable for Init {
     }
 }
 
+/*
 pub(crate) fn write_features_up_to_13<W: Writer>(
     w: &mut W,
     le_flags: &[u8],
@@ -195,6 +199,7 @@ pub(crate) fn write_features_up_to_13<W: Writer>(
     }
     Ok(())
 }
+*/
 
 macro_rules! impl_feature_len_prefixed_write {
     ($features: ident) => {
@@ -320,18 +325,30 @@ impl LengthReadable for Ping {
 
 impl LengthReadable for Init {
     fn read_from_fixed_length_buffer<R: LengthLimitedRead>(r: &mut R) -> Result<Self, DecodeError> {
-        let global_features: InitFeatures = Readable::read(r)?;
-        let features: InitFeatures = Readable::read(r)?;
-        let mut remote_network_address: Option<SocketAddress> = None;
-        let mut networks: Option<WithoutLength<Vec<ChainHash>>> = None;
+        //println!("remaining 1 {}", r.remaining_bytes());
+        let global_features: Vec<u8> = Readable::read(r)?;
+        //println!("reading global features {:?}", global_features);
+        let features: Vec<u8> = Readable::read(r)?;
+        //println!("reading remote features {:?}", features);
+        //let mut remote_network_address: Option<SocketAddress> = None;
+        //let mut networks: Option<WithoutLength<Vec<ChainHash>>> = None;
+
+        let mut buf = Vec::with_capacity(r.remaining_bytes() as usize);
+        r.read_to_end(&mut buf)?;
+
+
+        // TODO: fixme
+        /*
         decode_tlv_stream!(r, {
             (1, networks, option),
             (3, remote_network_address, option)
         });
+        */
         Ok(Init {
-            features: features | global_features,
-            networks: networks.map(|n| n.0),
-            remote_network_address,
+            global_features,
+            features,
+            networks: None,
+            remote_network_address: None,
         })
     }
 }

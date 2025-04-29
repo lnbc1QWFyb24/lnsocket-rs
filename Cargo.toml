@@ -4,8 +4,13 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bitcoin = { version = "0.32.5", features = ["rand", "rand-std"] }
+bitcoin = { version = "0.32.5", features = ["std", "rand", "rand-std"] }
 lightning-types = "0.2.0"
 hashbrown = { version = "0.13", default-features = false }
 tokio = { version = "1", features = [ "rt", "net", "io-util", "macros" ] }
+serde = { version = "1", features = ["derive"] }
+#serde_derive = "1"
+serde_json = "1"
+hex = "0.4.3"
+
 

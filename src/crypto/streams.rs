@@ -1,8 +1,8 @@
 use crate::crypto::chacha20::ChaCha20;
 use crate::crypto::chacha20poly1305rfc::ChaCha20Poly1305RFC;
 
-use crate::io::{self, Write};
 use crate::util::ser::{Writeable, Writer};
+use std::io::{self, Write};
 
 pub struct ChaChaReader<'a, R: io::Read> {
     pub chacha: &'a mut ChaCha20,
@@ -74,4 +74,3 @@ impl<'a, W: Writer> Writer for ChaChaPolyWriter<'a, W> {
         Ok(())
     }
 }
-

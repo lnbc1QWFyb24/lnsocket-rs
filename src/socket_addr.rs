@@ -1,10 +1,10 @@
-use crate::io::Read;
 use crate::ln::msgs::DecodeError;
 use crate::util::{
     base32,
     ser::{Hostname, Readable, Writeable, Writer},
 };
 use std::fmt::Display;
+use std::io::{self, Read};
 use std::str::FromStr;
 
 /// An address which can be used to connect to a remote peer.
@@ -69,7 +69,7 @@ impl SocketAddress {
 }
 
 impl Writeable for SocketAddress {
-    fn write<W: Writer>(&self, writer: &mut W) -> Result<(), crate::io::Error> {
+    fn write<W: Writer>(&self, writer: &mut W) -> Result<(), io::Error> {
         match self {
             &SocketAddress::TcpIpV4 { ref addr, ref port } => {
                 1u8.write(writer)?;

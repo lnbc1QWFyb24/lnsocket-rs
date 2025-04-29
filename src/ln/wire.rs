@@ -12,25 +12,9 @@
 //!
 //! [BOLT #1]: https://github.com/lightning/bolts/blob/master/01-messaging.md
 
-use crate::io;
 use crate::ln::msgs;
 use crate::util::ser::{LengthLimitedRead, LengthReadable, Readable, Writeable, Writer};
-
-/// Trait to be implemented by custom message (unrelated to the channel/gossip LN layers)
-/// decoders.
-pub trait CustomMessageReader {
-    /// The type of the message decoded by the implementation.
-    type CustomMessage: Type;
-    /// Decodes a custom message to `CustomMessageType`. If the given message type is known to the
-    /// implementation and the message could be decoded, must return `Ok(Some(message))`. If the
-    /// message type is unknown to the implementation, must return `Ok(None)`. If a decoding error
-    /// occur, must return `Err(DecodeError::X)` where `X` details the encountered error.
-    fn read<R: LengthLimitedRead>(
-        &self,
-        message_type: u16,
-        buffer: &mut R,
-    ) -> Result<Option<Self::CustomMessage>, msgs::DecodeError>;
-}
+use std::io;
 
 // TestEq is a dummy trait which requires PartialEq when built in testing, and otherwise is
 // blanket-implemented for all types.
@@ -39,7 +23,7 @@ pub trait CustomMessageReader {
 /// variant contains a message from [`msgs`] or otherwise the message type if unknown.
 #[allow(missing_docs)]
 #[derive(Debug)]
-pub enum Message<T: core::fmt::Debug + Type> {
+pub enum Message<T> {
     Init(msgs::Init),
     Error(msgs::ErrorMessage),
     Warning(msgs::WarningMessage),
@@ -52,7 +36,7 @@ pub enum Message<T: core::fmt::Debug + Type> {
     Custom(T),
 }
 
-impl<T: core::fmt::Debug + Type> Writeable for Message<T> {
+impl<T: core::fmt::Debug + Type + Writeable> Writeable for Message<T> {
     fn write<W: Writer>(&self, writer: &mut W) -> Result<(), io::Error> {
         match self {
             &Message::Init(ref msg) => msg.write(writer),
@@ -94,31 +78,32 @@ impl<T: core::fmt::Debug + Type> Message<T> {
 /// # Errors
 ///
 /// Returns an error if the message payload could not be decoded as the specified type.
-pub fn read<R: LengthLimitedRead, T, H: core::ops::Deref>(
+pub fn read<T, R>(
     buffer: &mut R,
-    custom_reader: H,
+    custom_reader: impl FnOnce(u16, &mut R) -> Result<Option<T>, msgs::DecodeError>,
 ) -> Result<Message<T>, (msgs::DecodeError, Option<u16>)>
 where
-    T: core::fmt::Debug + Type + Writeable,
-    H::Target: CustomMessageReader<CustomMessage = T>,
+    R: LengthLimitedRead,
 {
     let message_type = <u16 as Readable>::read(buffer).map_err(|e| (e, None))?;
+    //println!("message_type {}", message_type);
     do_read(buffer, message_type, custom_reader).map_err(|e| (e, Some(message_type)))
 }
 
-fn do_read<R: LengthLimitedRead, T, H: core::ops::Deref>(
+fn do_read<T, R>(
     buffer: &mut R,
     message_type: u16,
-    custom_reader: H,
+    custom_reader: impl FnOnce(u16, &mut R) -> Result<Option<T>, msgs::DecodeError>,
 ) -> Result<Message<T>, msgs::DecodeError>
 where
-    T: core::fmt::Debug + Type + Writeable,
-    H::Target: CustomMessageReader<CustomMessage = T>,
+    R: LengthLimitedRead,
 {
     match message_type {
-        msgs::Init::TYPE => Ok(Message::Init(
-            LengthReadable::read_from_fixed_length_buffer(buffer)?,
-        )),
+        msgs::Init::TYPE => {
+            let r = LengthReadable::read_from_fixed_length_buffer(buffer);
+            //println!("remaining end {} r {:?}", buffer.remaining_bytes(), r);
+            Ok(Message::Init(r?))
+        }
         msgs::ErrorMessage::TYPE => Ok(Message::Error(
             LengthReadable::read_from_fixed_length_buffer(buffer)?,
         )),
@@ -132,7 +117,7 @@ where
             LengthReadable::read_from_fixed_length_buffer(buffer)?,
         )),
         _ => {
-            if let Some(custom) = custom_reader.read(message_type, buffer)? {
+            if let Some(custom) = custom_reader(message_type, buffer)? {
                 Ok(Message::Custom(custom))
             } else {
                 Ok(Message::Unknown(message_type))
@@ -168,7 +153,7 @@ pub(crate) use self::encode::Encode;
 /// Defines a type identifier for sending messages over the wire.
 ///
 /// Messages implementing this trait specify a type and must be [`Writeable`].
-pub trait Type: core::fmt::Debug + Writeable {
+pub trait Type {
     /// Returns the type identifying the message payload.
     fn type_id(&self) -> u16;
 }

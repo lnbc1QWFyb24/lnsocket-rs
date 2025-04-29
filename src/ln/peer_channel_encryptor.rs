@@ -22,7 +22,7 @@ use bitcoin::secp256k1::{self, PublicKey, Secp256k1, SecretKey, Signing, ecdh::S
 
 use crate::crypto::chacha20poly1305rfc::ChaCha20Poly1305RFC;
 use crate::crypto::utils::hkdf_extract_expand_twice;
-use crate::util::ser::VecWriter;
+use crate::util::ser::{VecWriter, Writeable};
 
 /// Maximum Lightning message data length according to
 /// [BOLT-8](https://github.com/lightning/bolts/blob/v1.0/08-transport.md#lightning-message-specification)
@@ -44,18 +44,11 @@ const NOISE_H: [u8; 32] = [
     0x4b, 0xb4, 0x20, 0xd8, 0x9d, 0x2a, 0x04, 0x8a, 0x3c, 0x4f, 0x4c, 0x09, 0x2e, 0x37, 0xb6, 0x76,
 ];
 
-pub enum NextNoiseStep {
-    ActOne,
-    ActTwo,
-    ActThree,
-    NoiseComplete,
-}
-
 #[derive(PartialEq)]
 enum NoiseStep {
     PreActOne,
     PostActOne,
-    PostActTwo,
+    //PostActTwo,
     // When done swap noise_state for NoiseState::Finished
 }
 
@@ -64,14 +57,14 @@ struct BidirectionalNoiseState {
     ck: [u8; 32],
 }
 enum DirectionalNoiseState {
-    Outbound {
-        ie: SecretKey,
-    },
+    Outbound { ie: SecretKey },
+    /*
     Inbound {
         ie: Option<PublicKey>,     // filled in if state >= PostActOne
         re: Option<SecretKey>,     // filled in if state >= PostActTwo
         temp_k2: Option<[u8; 32]>, // filled in if state >= PostActTwo
     },
+    */
 }
 enum NoiseState {
     InProgress {
@@ -176,6 +169,15 @@ impl PeerChannelEncryptor {
         let mut nonce = [0; 12];
         nonce[4..].copy_from_slice(&n.to_le_bytes()[..]);
 
+        /*
+        println!(
+            "n {} key {} h {} cypher {}",
+            n,
+            hex::encode(key),
+            hex::encode(h),
+            hex::encode(cyphertext)
+        );
+        */
         let mut chacha = ChaCha20Poly1305RFC::new(key, &nonce, h);
         if chacha
             .variable_time_decrypt(
@@ -190,6 +192,7 @@ impl PeerChannelEncryptor {
                 action: msgs::ErrorAction::DisconnectPeer { msg: None },
             });
         }
+        //println!("ok! {}", hex::encode(res));
         Ok(())
     }
 
@@ -293,14 +296,15 @@ impl PeerChannelEncryptor {
                     );
                     *state = NoiseStep::PostActOne;
                     res
-                }
-                _ => panic!("Wrong direction for act"),
+                } //_ => panic!("Wrong direction for act"),
             },
             _ => panic!("Cannot get act one after noise handshake completes"),
         }
     }
+    /*
+    // TODO: inbound
 
-    pub fn process_act_one_with_keys<C: secp256k1::Signing>(
+    pub fn _process_act_one_with_keys<C: secp256k1::Signing>(
         &mut self,
         act_one: &[u8],
         node_signer: &SecretKey,
@@ -348,6 +352,7 @@ impl PeerChannelEncryptor {
             _ => panic!("Cannot get act one after noise handshake completes"),
         }
     }
+        */
 
     pub fn process_act_two<C: Signing>(
         &mut self,
@@ -400,8 +405,7 @@ impl PeerChannelEncryptor {
                     final_hkdf = hkdf_extract_expand_twice(&bidirectional_state.ck, &[0; 0]);
                     ck = bidirectional_state.ck.clone();
                     res
-                }
-                _ => panic!("Wrong direction for act"),
+                } //_ => panic!("Wrong direction for act"),
             },
             _ => panic!("Cannot get act one after noise handshake completes"),
         };
@@ -419,85 +423,87 @@ impl PeerChannelEncryptor {
         Ok(res)
     }
 
-    pub fn process_act_three(&mut self, act_three: &[u8]) -> Result<PublicKey, LightningError> {
-        assert_eq!(act_three.len(), 66);
+    /*
+        pub fn process_act_three(&mut self, act_three: &[u8]) -> Result<PublicKey, LightningError> {
+            assert_eq!(act_three.len(), 66);
 
-        let final_hkdf;
-        let ck;
-        match self.noise_state {
-            NoiseState::InProgress {
-                ref state,
-                ref directional_state,
-                ref mut bidirectional_state,
-            } => match directional_state {
-                &DirectionalNoiseState::Inbound {
-                    ie: _,
-                    ref re,
-                    ref temp_k2,
-                } => {
-                    if *state != NoiseStep::PostActTwo {
-                        panic!("Requested act at wrong step");
-                    }
-                    if act_three[0] != 0 {
-                        return Err(LightningError {
-                            err: format!("Unknown handshake version number {}", act_three[0]),
-                            action: msgs::ErrorAction::DisconnectPeer { msg: None },
-                        });
-                    }
-
-                    let mut their_node_id = [0; 33];
-                    PeerChannelEncryptor::decrypt_with_ad(
-                        &mut their_node_id,
-                        1,
-                        &temp_k2.unwrap(),
-                        &bidirectional_state.h,
-                        &act_three[1..50],
-                    )?;
-                    self.their_node_id = Some(match PublicKey::from_slice(&their_node_id) {
-                        Ok(key) => key,
-                        Err(_) => {
+            let final_hkdf;
+            let ck;
+            match self.noise_state {
+                NoiseState::InProgress {
+                    ref state,
+                    ref directional_state,
+                    ref mut bidirectional_state,
+                } => match directional_state {
+                    &DirectionalNoiseState::Inbound {
+                        ie: _,
+                        ref re,
+                        ref temp_k2,
+                    } => {
+                        if *state != NoiseStep::PostActTwo {
+                            panic!("Requested act at wrong step");
+                        }
+                        if act_three[0] != 0 {
                             return Err(LightningError {
-                                err: format!("Bad node_id from peer, {}", &their_node_id.as_hex()),
+                                err: format!("Unknown handshake version number {}", act_three[0]),
                                 action: msgs::ErrorAction::DisconnectPeer { msg: None },
                             });
                         }
-                    });
 
-                    let mut sha = Sha256::engine();
-                    sha.input(&bidirectional_state.h);
-                    sha.input(&act_three[1..50]);
-                    bidirectional_state.h = Sha256::from_engine(sha).to_byte_array();
+                        let mut their_node_id = [0; 33];
+                        PeerChannelEncryptor::decrypt_with_ad(
+                            &mut their_node_id,
+                            1,
+                            &temp_k2.unwrap(),
+                            &bidirectional_state.h,
+                            &act_three[1..50],
+                        )?;
+                        self.their_node_id = Some(match PublicKey::from_slice(&their_node_id) {
+                            Ok(key) => key,
+                            Err(_) => {
+                                return Err(LightningError {
+                                    err: format!("Bad node_id from peer, {}", &their_node_id.as_hex()),
+                                    action: msgs::ErrorAction::DisconnectPeer { msg: None },
+                                });
+                            }
+                        });
 
-                    let ss = SharedSecret::new(&self.their_node_id.unwrap(), &re.unwrap());
-                    let temp_k = PeerChannelEncryptor::hkdf(bidirectional_state, ss);
+                        let mut sha = Sha256::engine();
+                        sha.input(&bidirectional_state.h);
+                        sha.input(&act_three[1..50]);
+                        bidirectional_state.h = Sha256::from_engine(sha).to_byte_array();
 
-                    PeerChannelEncryptor::decrypt_with_ad(
-                        &mut [0; 0],
-                        0,
-                        &temp_k,
-                        &bidirectional_state.h,
-                        &act_three[50..],
-                    )?;
-                    final_hkdf = hkdf_extract_expand_twice(&bidirectional_state.ck, &[0; 0]);
-                    ck = bidirectional_state.ck.clone();
-                }
-                _ => panic!("Wrong direction for act"),
-            },
-            _ => panic!("Cannot get act one after noise handshake completes"),
+                        let ss = SharedSecret::new(&self.their_node_id.unwrap(), &re.unwrap());
+                        let temp_k = PeerChannelEncryptor::hkdf(bidirectional_state, ss);
+
+                        PeerChannelEncryptor::decrypt_with_ad(
+                            &mut [0; 0],
+                            0,
+                            &temp_k,
+                            &bidirectional_state.h,
+                            &act_three[50..],
+                        )?;
+                        final_hkdf = hkdf_extract_expand_twice(&bidirectional_state.ck, &[0; 0]);
+                        ck = bidirectional_state.ck.clone();
+                    }
+                    _ => panic!("Wrong direction for act"),
+                },
+                _ => panic!("Cannot get act one after noise handshake completes"),
+            }
+
+            let (rk, sk) = final_hkdf;
+            self.noise_state = NoiseState::Finished {
+                sk,
+                sn: 0,
+                sck: ck.clone(),
+                rk,
+                rn: 0,
+                rck: ck,
+            };
+
+            Ok(self.their_node_id.unwrap().clone())
         }
-
-        let (rk, sk) = final_hkdf;
-        self.noise_state = NoiseState::Finished {
-            sk,
-            sn: 0,
-            sck: ck.clone(),
-            rk,
-            rn: 0,
-            rck: ck,
-        };
-
-        Ok(self.their_node_id.unwrap().clone())
-    }
+    */
 
     /// Builds sendable bytes for a message.
     ///
@@ -545,17 +551,19 @@ impl PeerChannelEncryptor {
         }
     }
 
+    /*
     /// Encrypts the given pre-serialized message, returning the encrypted version.
     /// panics if msg.len() > 65535 or Noise handshake has not finished.
     pub fn encrypt_buffer(&mut self, mut msg: MessageBuf) -> Vec<u8> {
         self.encrypt_message_with_header_0s(&mut msg.0);
         msg.0
     }
+    */
 
     /// Encrypts the given message, returning the encrypted version.
     /// panics if the length of `message`, once encoded, is greater than 65535 or if the Noise
     /// handshake has not finished.
-    pub fn encrypt_message<M: wire::Type>(&mut self, message: &M) -> Vec<u8> {
+    pub fn encrypt_message<M: wire::Type + Writeable>(&mut self, message: &M) -> Vec<u8> {
         // Allocate a buffer with 2KB, fitting most common messages. Reserve the first 16+2 bytes
         // for the 2-byte message type prefix and its MAC.
         let mut res = VecWriter(Vec::with_capacity(MSG_BUF_ALLOC_SIZE));
@@ -568,9 +576,7 @@ impl PeerChannelEncryptor {
 
     /// Decrypts a message length header from the remote peer.
     /// panics if noise handshake has not yet finished or msg.len() != 18
-    pub fn decrypt_length_header(&mut self, msg: &[u8]) -> Result<u16, LightningError> {
-        assert_eq!(msg.len(), 16 + 2);
-
+    pub fn decrypt_length_header(&mut self, msg: &[u8; 18]) -> Result<u16, LightningError> {
         match self.noise_state {
             NoiseState::Finished {
                 sk: _,
@@ -622,25 +628,19 @@ impl PeerChannelEncryptor {
         }
     }
 
-    pub fn get_noise_step(&self) -> NextNoiseStep {
-        match self.noise_state {
-            NoiseState::InProgress { ref state, .. } => match state {
-                &NoiseStep::PreActOne => NextNoiseStep::ActOne,
-                &NoiseStep::PostActOne => NextNoiseStep::ActTwo,
-                &NoiseStep::PostActTwo => NextNoiseStep::ActThree,
-            },
-            NoiseState::Finished { .. } => NextNoiseStep::NoiseComplete,
-        }
-    }
-
+    /*
+    //TODO: inbound
     pub fn is_ready_for_encryption(&self) -> bool {
         match self.noise_state {
             NoiseState::InProgress { .. } => false,
             NoiseState::Finished { .. } => true,
         }
     }
+    */
 }
 
+// TODO: inbound
+/*
 /// A buffer which stores an encoded message (including the two message-type bytes) with some
 /// padding to allow for future encryption/MACing.
 pub struct MessageBuf(Vec<u8>);
@@ -661,3 +661,4 @@ impl MessageBuf {
         Self(res)
     }
 }
+*/
