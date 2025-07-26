@@ -2,9 +2,7 @@ use crate::util::{
     logger,
     ser::{LengthLimitedRead, LengthReadable, Readable, WithoutLength, Writeable, Writer},
 };
-use crate::{
-    encode_tlv_stream, ln::types::ChannelId, socket_addr::SocketAddress,
-};
+use crate::{encode_tlv_stream, ln::types::ChannelId, socket_addr::SocketAddress};
 use bitcoin::blockdata::constants::ChainHash;
 use lightning_types::features::InitFeatures;
 use std::io;
@@ -335,7 +333,6 @@ impl LengthReadable for Init {
 
         let mut buf = Vec::with_capacity(r.remaining_bytes() as usize);
         r.read_to_end(&mut buf)?;
-
 
         // TODO: fixme
         /*

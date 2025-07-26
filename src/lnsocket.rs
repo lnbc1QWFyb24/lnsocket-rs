@@ -1,16 +1,13 @@
 use crate::{
     Error,
-    commando::{self, CommandoCommand, CommandoReplyChunk, IncomingCommandoMessage},
     ln::{
-        msgs::DecodeError,
+        msgs::{self, DecodeError},
         peer_channel_encryptor::PeerChannelEncryptor,
         wire::{self, Message},
     },
     util::ser::Writeable,
 };
 use bitcoin::secp256k1::{PublicKey, Secp256k1, SecretKey, SignOnly, rand};
-use serde_json::Value;
-use std::collections::HashMap;
 use std::io::{self, Cursor};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpSocket, TcpStream, lookup_host};
@@ -23,99 +20,6 @@ pub struct LNSocket {
     their_pubkey: PublicKey,
     channel: PeerChannelEncryptor,
     stream: TcpStream,
-}
-
-pub struct CommandoClient {
-    req_ids: u64,
-    rune: String,
-    chunks: HashMap<u64, Vec<u8>>,
-}
-
-#[derive(Clone, Debug)]
-pub struct CompleteCommandoResponse {
-    req_id: u64,
-    json: serde_json::Value,
-}
-
-#[derive(Clone, Debug)]
-pub enum CommandoResponse {
-    Partial(u64),
-    Complete(CompleteCommandoResponse),
-}
-
-impl CommandoClient {
-    pub fn new(rune: impl Into<String>) -> Self {
-        let req_ids: u64 = 1;
-        Self {
-            req_ids,
-            rune: rune.into(),
-            chunks: Default::default(),
-        }
-    }
-
-    pub async fn send(
-        &mut self,
-        socket: &mut LNSocket,
-        method: impl Into<String>,
-        params: Vec<Value>,
-    ) -> Result<u64, io::Error> {
-        self.req_ids += 1;
-        let req_id = self.req_ids;
-        let command = CommandoCommand::new(req_id, method.into(), self.rune.clone(), params);
-
-        socket.write(&command).await?;
-
-        Ok(req_id)
-    }
-
-    fn update_chunks<'a>(&'a mut self, mut cont: CommandoReplyChunk) -> &'a [u8] {
-        self.chunks
-            .entry(cont.req_id)
-            .and_modify(|chunks| chunks.append(&mut cont.chunk))
-            .or_insert(cont.chunk)
-    }
-
-    fn finalize_chunks(
-        &mut self,
-        cont: CommandoReplyChunk,
-    ) -> Result<CompleteCommandoResponse, Error> {
-        let req_id = cont.req_id;
-        let json = {
-            let r = self.update_chunks(cont);
-            serde_json::from_slice(r)?
-        };
-        self.chunks.remove(&req_id);
-        Ok(CompleteCommandoResponse { req_id, json })
-    }
-
-    pub async fn read(
-        &mut self,
-        socket: &mut LNSocket,
-    ) -> Result<Message<CommandoResponse>, Error> {
-        let commando_msg: Message<IncomingCommandoMessage> = socket
-            .read_custom(|typ, buf| Ok(commando::read_incoming_commando_message(typ, buf)?))
-            .await?;
-
-        Ok(match commando_msg {
-            Message::Custom(incoming) => match incoming {
-                IncomingCommandoMessage::Chunk(chunk) => {
-                    let req_id = chunk.req_id;
-                    self.update_chunks(chunk);
-                    Message::Custom(CommandoResponse::Partial(req_id))
-                }
-                IncomingCommandoMessage::Done(chunk) => {
-                    Message::Custom(CommandoResponse::Complete(self.finalize_chunks(chunk)?))
-                }
-            },
-
-            Message::Init(a) => Message::Init(a),
-            Message::Error(a) => Message::Error(a),
-            Message::Warning(a) => Message::Warning(a),
-            Message::Ping(a) => Message::Ping(a),
-            Message::Pong(a) => Message::Pong(a),
-            Message::Unknown(unk) => Message::Unknown(unk),
-        })
-    }
 }
 
 impl LNSocket {
@@ -161,6 +65,38 @@ impl LNSocket {
         })
     }
 
+    pub async fn connect_and_init(
+        our_key: SecretKey,
+        their_pubkey: PublicKey,
+        addr: &str,
+    ) -> Result<LNSocket, Error> {
+        let mut lnsocket = LNSocket::connect(our_key, their_pubkey, addr).await?;
+        lnsocket.perform_init().await?;
+        Ok(lnsocket)
+    }
+
+    /// No commands will work until you exchange init messages with your peer
+    ///
+    /// See [`connect_and_init`]
+    pub async fn perform_init(&mut self) -> Result<(), Error> {
+        // first message should be init, if not, we fail
+        if let Message::Init(_) = self.read().await? {
+            // ok
+        } else {
+            return Err(Error::FirstMessageNotInit);
+        }
+
+        // send some bs
+        Ok(self
+            .write(&msgs::Init {
+                features: vec![0; 5],
+                global_features: vec![0; 2],
+                remote_network_address: None,
+                networks: Some(vec![bitcoin::constants::ChainHash::BITCOIN]),
+            })
+            .await?)
+    }
+
     pub async fn write<M: wire::Type + Writeable>(&mut self, m: &M) -> Result<(), io::Error> {
         let msg = self.channel.encrypt_message(m);
         self.stream.write_all(&msg).await?;
@@ -171,7 +107,7 @@ impl LNSocket {
         self.read_custom(|_type, _buf| Ok(None)).await
     }
 
-    async fn read_custom<T>(
+    pub async fn read_custom<T>(
         &mut self,
         handler: impl FnOnce(u16, &mut Cursor<&[u8]>) -> Result<Option<T>, DecodeError>,
     ) -> Result<Message<T>, Error>
@@ -208,25 +144,10 @@ mod tests {
         )
         .unwrap();
 
-        let mut lnsocket = LNSocket::connect(key, their_key, "ln.damus.io:9735").await?;
-
-        if let Message::Init(_) = lnsocket.read().await? {
-            // ok
-        } else {
-            assert!(false);
-        }
-
-        let req_id = lnsocket
-            .write(&msgs::Init {
-                features: vec![0; 5],
-                global_features: vec![0; 2],
-                remote_network_address: None,
-                networks: Some(vec![bitcoin::constants::ChainHash::BITCOIN]),
-            })
-            .await?;
+        let mut lnsocket = LNSocket::connect_and_init(key, their_key, "ln.damus.io:9735").await?;
 
         //println!("got here");
-        let req_id = lnsocket
+        lnsocket
             .write(&msgs::Ping {
                 ponglen: 4,
                 byteslen: 8,
@@ -246,36 +167,21 @@ mod tests {
 
     #[tokio::test]
     async fn test_commando() -> Result<(), Error> {
+        use crate::commando::CommandoClient;
+
         let key = SecretKey::new(&mut rand::thread_rng());
         let their_key = PublicKey::from_str(
             "03f3c108ccd536b8526841f0a5c58212bb9e6584a1eb493080e7c1cc34f82dad71",
         )
         .unwrap();
 
-        let mut lnsocket = LNSocket::connect(key, their_key, "ln.damus.io:9735").await?;
-        let rune = "hfYByx-RDwdBfAK-vOWeOCDJVYlvKSioVKU_y7jccZU9MjkmbWV0aG9kPWdldGluZm8=";
-        let mut commando = CommandoClient::new(rune);
-        let req_id = lnsocket
-            .write(&msgs::Init {
-                features: vec![0; 5],
-                global_features: vec![0; 2],
-                remote_network_address: None,
-                networks: Some(vec![bitcoin::constants::ChainHash::BITCOIN]),
-            })
-            .await?;
+        let mut socket = LNSocket::connect_and_init(key, their_key, "ln.damus.io:9735").await?;
+        let mut commando = CommandoClient::new(
+            "hfYByx-RDwdBfAK-vOWeOCDJVYlvKSioVKU_y7jccZU9MjkmbWV0aG9kPWdldGluZm8=",
+        );
+        let resp = commando.call(&mut lnsocket, "getinfo", vec![]).await?;
 
-        let req_id = commando
-            .send(&mut lnsocket, "getinfo", Vec::with_capacity(0))
-            .await?;
-
-        loop {
-            let result = commando.read(&mut lnsocket).await?;
-            if let Message::Custom(CommandoResponse::Complete(msg)) = &result {
-                println!("{}", serde_json::to_string(&msg.json).unwrap());
-                break;
-            }
-            //println!("skipping {result:?}");
-        }
+        println!("{}", serde_json::to_string(&resp).unwrap());
 
         Ok(())
     }

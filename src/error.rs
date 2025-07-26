@@ -6,6 +6,7 @@ use std::net::AddrParseError;
 #[derive(Debug)]
 pub enum Error {
     NotConnected,
+    FirstMessageNotInit,
     DnsError,
     Io(io::ErrorKind),
     Json(serde_json::Error),
@@ -18,6 +19,7 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Error::NotConnected => write!(f, "Not connected to server"),
+            Error::FirstMessageNotInit => write!(f, "First message was not init"),
             Error::DnsError => write!(f, "Failed to resolve hostname"),
             Error::Io(kind) => write!(f, "I/O error: {}", kind),
             Error::Lightning(err) => write!(f, "Lightning error: {:?}", err),
