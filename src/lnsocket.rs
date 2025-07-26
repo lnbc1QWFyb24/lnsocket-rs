@@ -175,7 +175,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut socket = LNSocket::connect_and_init(key, their_key, "ln.damus.io:9735").await?;
+        let mut lnsocket = LNSocket::connect_and_init(key, their_key, "ln.damus.io:9735").await?;
         let mut commando = CommandoClient::new(
             "hfYByx-RDwdBfAK-vOWeOCDJVYlvKSioVKU_y7jccZU9MjkmbWV0aG9kPWdldGluZm8=",
         );

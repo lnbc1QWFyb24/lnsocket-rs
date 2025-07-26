@@ -10,7 +10,7 @@ A Rust library for establishing connections to Lightning Network nodes. This lib
 
 - [x] Establish encrypted connections to Lightning Network nodes with Noise_XK handshake protocol
 - [x] Send and receive Lightning Network messages
-- [ ] Support for Commando CLN RPC messages
+- [x] Support for Commando CLN RPC messages
 
 ## Dependencies
 
@@ -30,13 +30,29 @@ lnsocket = "0.1.0"
 Basic example (API details may change):
 
 ```rust
-use lnsocket::LNSocket;
+use lnsocket::{LNSocket, CommandoClient};
 use bitcoin::secp256k1::{PublicKey, SecretKey};
 
-// Create a new connection to a node
-let their_pubkey = PublicKey::from_str("03f3c108ccd536b8526841f0a5c58212bb9e6584a1eb493080e7c1cc34f82dad71")?;
-let our_key = SecretKey::new(&mut rand::thread_rng());
-let lnsocket = LNSocket::connect(our_key, their_pubkey).await?;
+async fn test_commando() -> Result<(), Error> {
+    use crate::commando::CommandoClient;
+
+    let key = SecretKey::new(&mut rand::thread_rng());
+    let their_key = PublicKey::from_str(
+        "03f3c108ccd536b8526841f0a5c58212bb9e6584a1eb493080e7c1cc34f82dad71",
+    )
+    .unwrap();
+
+    let mut lnsocket = LNSocket::connect_and_init(key, their_key, "ln.damus.io:9735").await?;
+    let mut commando = CommandoClient::new(
+        "hfYByx-RDwdBfAK-vOWeOCDJVYlvKSioVKU_y7jccZU9MjkmbWV0aG9kPWdldGluZm8=",
+    );
+    let resp = commando.call(&mut lnsocket, "getinfo", vec![]).await?;
+
+    println!("{}", serde_json::to_string(&resp).unwrap());
+
+    Ok(())
+}
+
 ```
 
 ## Status
