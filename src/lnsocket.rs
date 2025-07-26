@@ -68,9 +68,13 @@ mod tests {
             "03f3c108ccd536b8526841f0a5c58212bb9e6584a1eb493080e7c1cc34f82dad71",
         )
         .unwrap();
-        if let Err(err) = LNSocket::connect(key, their_key, "ln.damus.io:9735").await {
+
+        let lnsocket = LNSocket::connect(key, their_key, "ln.damus.io:9735").await;
+        if let Err(err) = lnsocket {
             eprintln!("connection failed: {err}");
             assert!(false);
         }
+
+        //lnsocket.commando("getinvoice", /*...*/).await
     }
 }
