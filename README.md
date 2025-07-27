@@ -4,21 +4,11 @@ A Rust library for establishing connections to Lightning Network nodes. This lib
 
 lnsocket also comes batteries included with Commando support, allowing you to call RPCs on core-lightning nodes remotely!
 
-## Overview
-
-`lnsocket-rs` allows you to establish secure connections to Lightning Network nodes and exchange Lightning Network messages. It's built using components from the [Lightning Development Kit (LDK)](https://lightningdevkit.org/) and offers a lightweight, focused API for Lightning Network communication.
-
 ## Features
 
 - [x] Establish encrypted connections to Lightning Network nodes with Noise_XK handshake protocol
 - [x] Send and receive Lightning Network messages
 - [x] Support for Commando CLN RPC messages
-
-## Dependencies
-
-- `bitcoin` (v0.32.2) - For Bitcoin primitives and cryptography
-- `lightning-types` (v0.2.0) - For Lightning Network data types
-- `hashbrown` (v0.13) - For hash collections
 
 ## Usage
 
@@ -29,7 +19,7 @@ Add to your `Cargo.toml`:
 lnsocket = "0.1.0"
 ```
 
-Basic example (API details may change):
+### Example
 
 ```rust
 use lnsocket::{LNSocket, CommandoClient};
