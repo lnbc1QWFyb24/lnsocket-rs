@@ -12,8 +12,8 @@ use crate::prelude::*;
 /// RFC4648 encoding table
 const RFC4648_ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
-/// Zbase encoding alphabet
-const ZBASE_ALPHABET: &[u8] = b"ybndrfg8ejkmcpqxot1uwisza345h769";
+// Zbase encoding alphabet
+//const ZBASE_ALPHABET: &[u8] = b"ybndrfg8ejkmcpqxot1uwisza345h769";
 
 /// RFC4648 decoding table
 const RFC4648_INV_ALPHABET: [i8; 43] = [
@@ -21,11 +21,13 @@ const RFC4648_INV_ALPHABET: [i8; 43] = [
     9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
 ];
 
-/// Zbase decoding table
+/*
+// Zbase decoding table
 const ZBASE_INV_ALPHABET: [i8; 43] = [
     -1, 18, -1, 25, 26, 27, 30, 29, 7, 31, -1, -1, -1, -1, -1, -1, -1, 24, 1, 12, 3, 8, 5, 6, 28,
     21, 9, 10, -1, 11, 2, 16, 13, 14, 4, 22, 17, 19, -1, 20, 15, 0, 23,
 ];
+*/
 
 /// Alphabet used for encoding and decoding.
 #[derive(Copy, Clone)]
@@ -35,8 +37,8 @@ pub enum Alphabet {
         /// Whether to use padding.
         padding: bool,
     },
-    /// Zbase32 encoding.
-    ZBase32,
+    // Zbase32 encoding.
+    //ZBase32,
 }
 
 impl Alphabet {
@@ -46,21 +48,21 @@ impl Alphabet {
         // / 5 divides the data length by the number of bits per chunk (5),
         // * 8 multiplies the result by the number of characters per chunk (8).
         // + 4 rounds up to the nearest character.
+        #[allow(clippy::manual_div_ceil)]
         let output_length = (data.len() * 8 + 4) / 5;
         let mut ret = match self {
             Self::RFC4648 { padding } => {
                 let mut ret = Self::encode_data(data, RFC4648_ALPHABET);
                 if *padding {
                     let len = ret.len();
-                    for i in output_length..len {
-                        ret[i] = b'=';
+                    for i in ret.iter_mut().take(len).skip(output_length) {
+                        *i = b'=';
                     }
 
                     return String::from_utf8(ret).expect("Invalid UTF-8");
                 }
                 ret
-            }
-            Self::ZBase32 => Self::encode_data(data, ZBASE_ALPHABET),
+            } //Self::ZBase32 => Self::encode_data(data, ZBASE_ALPHABET),
         };
         ret.truncate(output_length);
 
@@ -84,8 +86,7 @@ impl Alphabet {
                     });
                 }
                 (&data[..unpadded_data_length], RFC4648_INV_ALPHABET)
-            }
-            Self::ZBase32 => (data, ZBASE_INV_ALPHABET),
+            } //Self::ZBase32 => (data, ZBASE_INV_ALPHABET),
         };
         // If the string has more characters than are required to alphabet_encode the number of bytes
         // decodable, treat the string as invalid.
@@ -93,7 +94,7 @@ impl Alphabet {
             1 | 3 | 6 => return Err(()),
             _ => {}
         }
-        Ok(Self::decode_data(data, alphabet)?)
+        Self::decode_data(data, alphabet)
     }
 
     /// Encode a byte slice into a base32 string.
@@ -102,7 +103,7 @@ impl Alphabet {
         // / 5 divides the data length by the number of bits per chunk (5),
         // * 8 multiplies the result by the number of characters per chunk (8).
         // + 4 rounds up to the nearest character.
-        let cap = (data.len() + 4) / 5 * 8;
+        let cap = data.len().div_ceil(5);
         let mut ret = Vec::with_capacity(cap);
         for chunk in data.chunks(5) {
             let mut buf = [0u8; 5];
@@ -127,7 +128,7 @@ impl Alphabet {
         // / 8 divides the data length by the number of characters per chunk (8),
         // * 5 multiplies the result by the number of bits per chunk (5),
         // + 7 rounds up to the nearest byte.
-        let cap = (data.len() + 7) / 8 * 5;
+        let cap = data.len().div_ceil(8);
         let mut ret = Vec::with_capacity(cap);
         for chunk in data.chunks(8) {
             let mut buf = [0u8; 8];
@@ -160,48 +161,6 @@ impl Alphabet {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    const ZBASE32_TEST_DATA: &[(&str, &[u8])] = &[
-        ("", &[]),
-        ("yy", &[0x00]),
-        ("oy", &[0x80]),
-        ("tqrey", &[0x8b, 0x88, 0x80]),
-        ("6n9hq", &[0xf0, 0xbf, 0xc7]),
-        ("4t7ye", &[0xd4, 0x7a, 0x04]),
-        ("6im5sdy", &[0xf5, 0x57, 0xbb, 0x0c]),
-        (
-            "ybndrfg8ejkmcpqxot1uwisza345h769",
-            &[
-                0x00, 0x44, 0x32, 0x14, 0xc7, 0x42, 0x54, 0xb6, 0x35, 0xcf, 0x84, 0x65, 0x3a, 0x56,
-                0xd7, 0xc6, 0x75, 0xbe, 0x77, 0xdf,
-            ],
-        ),
-    ];
-
-    #[test]
-    fn test_zbase32_encode() {
-        for &(zbase32, data) in ZBASE32_TEST_DATA {
-            assert_eq!(Alphabet::ZBase32.encode(data), zbase32);
-        }
-    }
-
-    #[test]
-    fn test_zbase32_decode() {
-        for &(zbase32, data) in ZBASE32_TEST_DATA {
-            assert_eq!(Alphabet::ZBase32.decode(zbase32).unwrap(), data);
-        }
-    }
-
-    #[test]
-    fn test_decode_wrong() {
-        const WRONG_DATA: &[&str] = &["00", "l1", "?", "="];
-        for &data in WRONG_DATA {
-            match Alphabet::ZBase32.decode(data) {
-                Ok(_) => assert!(false, "Data shouldn't be decodable"),
-                Err(_) => assert!(true),
-            }
-        }
-    }
 
     const RFC4648_NON_PADDED_TEST_VECTORS: &[(&[u8], &[u8])] = &[
         (&[0xF8, 0x3E, 0x7F, 0x83, 0xE7], b"7A7H7A7H"),

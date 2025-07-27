@@ -59,11 +59,11 @@ impl SocketAddress {
 
     pub fn is_tor(&self) -> bool {
         match self {
-            &SocketAddress::TcpIpV4 { .. } => false,
-            &SocketAddress::TcpIpV6 { .. } => false,
-            &SocketAddress::OnionV2(_) => true,
-            &SocketAddress::OnionV3 { .. } => true,
-            &SocketAddress::Hostname { .. } => false,
+            SocketAddress::TcpIpV4 { .. } => false,
+            SocketAddress::TcpIpV6 { .. } => false,
+            SocketAddress::OnionV2(_) => true,
+            SocketAddress::OnionV3 { .. } => true,
+            SocketAddress::Hostname { .. } => false,
         }
     }
 }
@@ -71,25 +71,25 @@ impl SocketAddress {
 impl Writeable for SocketAddress {
     fn write<W: Writer>(&self, writer: &mut W) -> Result<(), io::Error> {
         match self {
-            &SocketAddress::TcpIpV4 { ref addr, ref port } => {
+            SocketAddress::TcpIpV4 { addr, port } => {
                 1u8.write(writer)?;
                 addr.write(writer)?;
                 port.write(writer)?;
             }
-            &SocketAddress::TcpIpV6 { ref addr, ref port } => {
+            SocketAddress::TcpIpV6 { addr, port } => {
                 2u8.write(writer)?;
                 addr.write(writer)?;
                 port.write(writer)?;
             }
-            &SocketAddress::OnionV2(bytes) => {
+            SocketAddress::OnionV2(bytes) => {
                 3u8.write(writer)?;
                 bytes.write(writer)?;
             }
-            &SocketAddress::OnionV3 {
-                ref ed25519_pubkey,
-                ref checksum,
-                ref version,
-                ref port,
+            SocketAddress::OnionV3 {
+                ed25519_pubkey,
+                checksum,
+                version,
+                port,
             } => {
                 4u8.write(writer)?;
                 ed25519_pubkey.write(writer)?;
@@ -97,10 +97,7 @@ impl Writeable for SocketAddress {
                 version.write(writer)?;
                 port.write(writer)?;
             }
-            &SocketAddress::Hostname {
-                ref hostname,
-                ref port,
-            } => {
+            SocketAddress::Hostname { hostname, port } => {
                 5u8.write(writer)?;
                 hostname.write(writer)?;
                 port.write(writer)?;
@@ -135,7 +132,7 @@ impl Readable for Result<SocketAddress, u8> {
                 hostname: Readable::read(reader)?,
                 port: Readable::read(reader)?,
             })),
-            _ => return Ok(Err(byte)),
+            _ => Ok(Err(byte)),
         }
     }
 }
@@ -226,15 +223,11 @@ impl std::net::ToSocketAddrs for SocketAddress {
             SocketAddress::Hostname { hostname, port } => {
                 (hostname.as_str(), *port).to_socket_addrs()
             }
-            SocketAddress::OnionV2(..) => Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Resolution of OnionV2 \
-				addresses is currently unsupported.",
+            SocketAddress::OnionV2(..) => Err(std::io::Error::other(
+                "Resolution of OnionV2 addresses is currently unsupported.",
             )),
-            SocketAddress::OnionV3 { .. } => Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Resolution of OnionV3 \
-				addresses is currently unsupported.",
+            SocketAddress::OnionV3 { .. } => Err(std::io::Error::other(
+                "Resolution of OnionV3 addresses is currently unsupported.",
             )),
         }
     }
@@ -346,7 +339,7 @@ impl FromStr for SocketAddress {
                 if let Ok(hostname) = Hostname::try_from(s[..trimmed_input].to_string()) {
                     return Ok(SocketAddress::Hostname { hostname, port });
                 };
-                return Err(SocketAddressParseError::SocketAddrParse);
+                Err(SocketAddressParseError::SocketAddrParse)
             }
         }
     }
@@ -360,12 +353,16 @@ pub fn parse_onion_address(
     port: u16,
 ) -> Result<SocketAddress, SocketAddressParseError> {
     if host.ends_with(".onion") {
-        let domain = &host[..host.len() - ".onion".len()];
-        if domain.len() != 56 {
+        let domain = if let Some(domain) = host.strip_suffix(".onion") {
+            if domain.len() != 56 {
+                return Err(SocketAddressParseError::InvalidOnionV3);
+            }
+            domain
+        } else {
             return Err(SocketAddressParseError::InvalidOnionV3);
-        }
+        };
         let onion = base32::Alphabet::RFC4648 { padding: false }
-            .decode(&domain)
+            .decode(domain)
             .map_err(|_| SocketAddressParseError::InvalidOnionV3)?;
         if onion.len() != 35 {
             return Err(SocketAddressParseError::InvalidOnionV3);
@@ -376,13 +373,13 @@ pub fn parse_onion_address(
         let mut ed25519_pubkey = [0; 32];
         ed25519_pubkey.copy_from_slice(&onion[3..35]);
         let checksum = u16::from_be_bytes([first_checksum_flag, second_checksum_flag]);
-        return Ok(SocketAddress::OnionV3 {
+        Ok(SocketAddress::OnionV3 {
             ed25519_pubkey,
             checksum,
             version,
             port,
-        });
+        })
     } else {
-        return Err(SocketAddressParseError::InvalidInput);
+        Err(SocketAddressParseError::InvalidInput)
     }
 }

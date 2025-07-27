@@ -13,7 +13,6 @@
 //! [`ChannelManager`]: crate::ln::channelmanager::ChannelManager
 //! [`ChannelMonitor`]: crate::chain::channelmonitor::ChannelMonitor
 
-use crate::io_extras::{copy, sink};
 use crate::prelude::*;
 use bitcoin::constants::ChainHash;
 use core::cmp;
@@ -60,7 +59,7 @@ impl Writeable for Vec<u8> {
     #[inline]
     fn write<W: Writer>(&self, w: &mut W) -> Result<(), io::Error> {
         CollectionLength(self.len() as u64).write(w)?;
-        w.write_all(&self)
+        w.write_all(self)
     }
 }
 
@@ -109,23 +108,6 @@ impl<'a, R: Read> FixedLengthReader<'a, R> {
             read,
             bytes_read: 0,
             total_bytes,
-        }
-    }
-
-    /// Returns whether some bytes are remaining or not.
-    #[inline]
-    pub fn bytes_remain(&mut self) -> bool {
-        self.bytes_read != self.total_bytes
-    }
-
-    /// Consumes the remaining bytes.
-    #[inline]
-    pub fn eat_remaining(&mut self) -> Result<(), DecodeError> {
-        copy(self, &mut sink()).unwrap();
-        if self.bytes_read != self.total_bytes {
-            Err(DecodeError::ShortRead)
-        } else {
-            Ok(())
         }
     }
 }
@@ -230,7 +212,7 @@ pub trait Writeable {
     }
 }
 
-impl<'a, T: Writeable> Writeable for &'a T {
+impl<T: Writeable> Writeable for &T {
     fn write<W: Writer>(&self, writer: &mut W) -> Result<(), io::Error> {
         (*self).write(writer)
     }
@@ -453,7 +435,7 @@ impl Writeable for BigSize {
             }
             _ => {
                 0xFFu8.write(writer)?;
-                (self.0 as u64).write(writer)
+                self.0.write(writer)
             }
         }
     }
@@ -715,13 +697,13 @@ trait AsWriteableSlice {
 impl<T: Writeable> AsWriteableSlice for &Vec<T> {
     type Inner = T;
     fn as_slice(&self) -> &[T] {
-        &self
+        self
     }
 }
 impl<T: Writeable> AsWriteableSlice for &[T] {
     type Inner = T;
     fn as_slice(&self) -> &[T] {
-        &self
+        self
     }
 }
 
@@ -860,7 +842,7 @@ pub struct Hostname(String);
 impl Hostname {
     /// Returns the length of the hostname.
     pub fn len(&self) -> u8 {
-        (&self.0).len() as u8
+        self.0.len() as u8
     }
 
     /// Check if the chars in `s` are allowed to be included in a [`Hostname`].
@@ -922,8 +904,7 @@ impl Readable for Hostname {
     #[inline]
     fn read<R: Read>(r: &mut R) -> Result<Hostname, DecodeError> {
         let len: u8 = Readable::read(r)?;
-        let mut vec = Vec::with_capacity(len.into());
-        vec.resize(len.into(), 0);
+        let mut vec = vec![0; len.into()];
         r.read_exact(&mut vec)?;
         Hostname::try_from(vec).map_err(|_| DecodeError::InvalidValue)
     }

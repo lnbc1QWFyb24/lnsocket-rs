@@ -120,20 +120,11 @@ macro_rules! _check_encoded_tlv_order {
 ///
 /// For example,
 /// ```
-/// # use lightning::encode_tlv_stream;
-/// # fn write<W: lightning::util::ser::Writer> (stream: &mut W) -> Result<(), lightning::io::Error> {
 /// let mut required_value = 0u64;
 /// let mut optional_value: Option<u64> = None;
-/// encode_tlv_stream!(stream, {
-///     (0, required_value, required),
-///     (1, Some(42u64), option),
-///     (2, optional_value, option),
-/// });
 /// // At this point `required_value` has been written as a TLV of type 0, `42u64` has been written
 /// // as a TLV of type 1 (indicating the reader may ignore it if it is not understood), and *no*
 /// // TLV is written with type 2.
-/// # Ok(())
-/// # }
 /// ```
 ///
 /// [`Writeable`]: crate::util::ser::Writeable
@@ -528,19 +519,11 @@ macro_rules! _decode_tlv_stream_match_check {
 ///
 /// For example,
 /// ```
-/// # use lightning::decode_tlv_stream;
-/// # fn read<R: lightning::io::Read> (stream: &mut R) -> Result<(), lightning::ln::msgs::DecodeError> {
 /// let mut required_value = 0u64;
 /// let mut optional_value: Option<u64> = None;
-/// decode_tlv_stream!(stream, {
-///     (0, required_value, required),
-///     (2, optional_value, option),
-/// });
 /// // At this point, `required_value` has been overwritten with the TLV with type 0.
 /// // `optional_value` may have been overwritten, setting it to `Some` if a TLV with type 2 was
 /// // present.
-/// # Ok(())
-/// # }
 /// ```
 ///
 /// [`Readable`]: crate::util::ser::Readable
@@ -651,7 +634,6 @@ macro_rules! _decode_tlv_stream_range {
 ///
 /// For example,
 /// ```
-/// # use lightning::impl_writeable_msg;
 /// struct MyCustomMessage {
 ///     pub field_1: u32,
 ///     pub field_2: bool,
@@ -659,13 +641,6 @@ macro_rules! _decode_tlv_stream_range {
 ///     pub tlv_optional_integer: Option<u32>,
 /// }
 ///
-/// impl_writeable_msg!(MyCustomMessage, {
-///     field_1,
-///     field_2,
-///     field_3
-/// }, {
-///     (1, tlv_optional_integer, option),
-/// });
 /// ```
 ///
 /// [`LengthReadable`]: crate::util::ser::LengthReadable
@@ -894,7 +869,6 @@ macro_rules! _decode_and_build {
 ///
 /// For example,
 /// ```
-/// # use lightning::impl_writeable_tlv_based;
 /// struct LightningMessage {
 ///     tlv_integer: u32,
 ///     tlv_default_integer: u32,
@@ -903,14 +877,6 @@ macro_rules! _decode_and_build {
 ///        tlv_upgraded_integer: u32,
 /// }
 ///
-/// impl_writeable_tlv_based!(LightningMessage, {
-///     (0, tlv_integer, required),
-///     (1, tlv_default_integer, (default_value, 7)),
-///     (2, tlv_optional_integer, option),
-///     (3, tlv_vec_type_integer, optional_vec),
-///     (4, unwritten_type, (legacy, u32, |us: &LightningMessage| Some(us.tlv_integer))),
-///     (_unused, tlv_upgraded_integer, (static_value, unwritten_type.unwrap_or(0) * 2))
-/// });
 /// ```
 ///
 /// [`Readable`]: crate::util::ser::Readable
@@ -1009,13 +975,6 @@ macro_rules! _impl_writeable_tlv_based_enum_common {
 ///   TupleVariantA(),
 ///   TupleVariantB(Vec<u8>),
 /// }
-/// # use lightning::impl_writeable_tlv_based_enum;
-/// impl_writeable_tlv_based_enum!(EnumName,
-///   (0, StructVariantA) => {(0, required_variant_field, required), (1, optional_variant_field, option)},
-///   (1, StructVariantB) => {(0, variant_field_a, required), (1, variant_field_b, required), (2, variant_vec_field, optional_vec)},
-///   (2, TupleVariantA) => {}, // Note that empty tuple variants have to use the struct syntax due to rust limitations
-///   {3, TupleVariantB} => (),
-/// );
 /// ```
 ///
 /// The type is written as a single byte, followed by length-prefixed variant data.

@@ -41,7 +41,7 @@ impl<'a, T: Writeable> Writeable for ChaChaPolyWriteAdapter<'a, T> {
             write: w,
         };
         self.writeable.write(&mut chacha_stream)?;
-        let mut tag = [0 as u8; 16];
+        let mut tag = [0_u8; 16];
         chacha.finish_and_get_tag(&mut tag);
         tag.write(w)?;
 

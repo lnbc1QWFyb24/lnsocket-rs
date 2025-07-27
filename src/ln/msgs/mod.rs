@@ -172,7 +172,7 @@ impl Writeable for Init {
         self.global_features.write(w)?;
         self.features.write(w)?;
         encode_tlv_stream!(w, {
-            (1, self.networks.as_ref().map(|n| WithoutLength(n)), option),
+            (1, self.networks.as_ref().map(WithoutLength), option),
             (3, self.remote_network_address, option),
         });
         Ok(())
@@ -242,8 +242,7 @@ impl LengthReadable for ErrorMessage {
             channel_id: Readable::read(r)?,
             data: {
                 let sz: usize = <u16 as Readable>::read(r)? as usize;
-                let mut data = Vec::with_capacity(sz);
-                data.resize(sz, 0);
+                let mut data = vec![0; sz];
                 r.read_exact(&mut data)?;
                 match String::from_utf8(data) {
                     Ok(s) => s,
@@ -269,8 +268,7 @@ impl LengthReadable for WarningMessage {
             channel_id: Readable::read(r)?,
             data: {
                 let sz: usize = <u16 as Readable>::read(r)? as usize;
-                let mut data = Vec::with_capacity(sz);
-                data.resize(sz, 0);
+                let mut data = vec![0; sz];
                 r.read_exact(&mut data)?;
                 match String::from_utf8(data) {
                     Ok(s) => s,

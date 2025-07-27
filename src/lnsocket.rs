@@ -7,7 +7,7 @@ use crate::{
     },
     util::ser::Writeable,
 };
-use bitcoin::secp256k1::{PublicKey, Secp256k1, SecretKey, SignOnly, rand};
+use bitcoin::secp256k1::{PublicKey, Secp256k1, SecretKey, rand};
 use std::io::{self, Cursor};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpSocket, TcpStream, lookup_host};
@@ -15,9 +15,6 @@ use tokio::net::{TcpSocket, TcpStream, lookup_host};
 const ACT_TWO_SIZE: usize = 50;
 
 pub struct LNSocket {
-    secp_ctx: Secp256k1<SignOnly>,
-    our_key: SecretKey,
-    their_pubkey: PublicKey,
     channel: PeerChannelEncryptor,
     stream: TcpStream,
 }
@@ -31,10 +28,7 @@ impl LNSocket {
         let secp_ctx = Secp256k1::signing_only();
 
         // Look up host to resolve domain name to IP address
-        let addr = lookup_host(addr)
-            .await?
-            .next()
-            .ok_or_else(|| Error::DnsError)?;
+        let addr = lookup_host(addr).await?.next().ok_or(Error::DnsError)?;
 
         let socket = if addr.is_ipv4() {
             TcpSocket::new_v4()?
@@ -56,13 +50,7 @@ impl LNSocket {
         // Finalize the handshake by sending act3
         stream.write_all(&act_three).await?;
 
-        Ok(Self {
-            secp_ctx,
-            our_key,
-            their_pubkey,
-            channel,
-            stream,
-        })
+        Ok(Self { channel, stream })
     }
 
     pub async fn connect_and_init(
@@ -117,7 +105,7 @@ impl LNSocket {
         let mut hdr = [0u8; 18];
 
         self.stream.read_exact(&mut hdr).await?;
-        let size = self.channel.decrypt_length_header(&mut hdr)? as usize;
+        let size = self.channel.decrypt_length_header(&hdr)? as usize;
         //println!("len header {size}");
         let mut buf = vec![0; size + 16];
         self.stream.read_exact(&mut buf).await?;

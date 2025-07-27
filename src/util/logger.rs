@@ -86,33 +86,27 @@ impl Level {
     }
 }
 
-macro_rules! impl_record {
-	($($args: lifetime)?, $($nonstruct_args: lifetime)?) => {
 /// A Record, unit of logging output with Metadata to enable filtering
 /// Module_path, file, line to inform on log's source
 #[derive(Clone, Debug)]
-pub struct Record<$($args)?> {
-	/// The verbosity level of the message.
-	pub level: Level,
-	/// The node id of the peer pertaining to the logged record.
-	///
-	/// Note that in some cases a [`Self::channel_id`] may be filled in but this may still be
-	/// `None`, depending on if the peer information is readily available in LDK when the log is
-	/// generated.
-	pub peer_id: Option<PublicKey>,
-	/// The message body.
-	pub args: fmt::Arguments<'a>,
-	/// The module path of the message.
-	pub module_path: &'static str,
-	/// The source file containing the message.
-	pub file: &'static str,
-	/// The line containing the message.
-	pub line: u32,
+pub struct Record {
+    /// The verbosity level of the message.
+    ///pub level: Level,
+    /// The node id of the peer pertaining to the logged record.
+    ///
+    /// Note that in some cases a [`Self::channel_id`] may be filled in but this may still be
+    /// `None`, depending on if the peer information is readily available in LDK when the log is
+    /// generated.
+    pub peer_id: Option<PublicKey>,
+    // The message body.
+    //pub args: fmt::Arguments<'a>,
+    // The module path of the message.
+    //pub module_path: &'static str,
+    // The source file containing the message.
+    //pub file: &'static str,
+    // The line containing the message.
+    //pub line: u32,
 }
-
-} }
-
-impl_record!('a, );
 
 /// A trait encapsulating the operations required of a logger.
 pub trait Logger {

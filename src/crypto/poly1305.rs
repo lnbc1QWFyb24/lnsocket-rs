@@ -196,10 +196,10 @@ impl Poly1305 {
         h4 = (h4 & mask) | g4;
 
         // h = h % (2^128)
-        h0 = ((h0) | (h1 << 26)) & 0xffffffff;
-        h1 = ((h1 >> 6) | (h2 << 20)) & 0xffffffff;
-        h2 = ((h2 >> 12) | (h3 << 14)) & 0xffffffff;
-        h3 = ((h3 >> 18) | (h4 << 8)) & 0xffffffff;
+        h0 |= h1 << 26;
+        h1 = (h1 >> 6) | (h2 << 20);
+        h2 = (h2 >> 12) | (h3 << 14);
+        h3 = (h3 >> 18) | (h4 << 8);
 
         // h = mac = (h + pad) % (2^128)
         let mut f: u64;
@@ -224,8 +224,8 @@ impl Poly1305 {
 
         if self.leftover > 0 {
             let want = min(16 - self.leftover, m.len());
-            for i in 0..want {
-                self.buffer[self.leftover + i] = m[i];
+            for (i, item) in m.iter().enumerate().take(want) {
+                self.buffer[self.leftover + i] = *item;
             }
             m = &m[want..];
             self.leftover += want;
@@ -246,9 +246,7 @@ impl Poly1305 {
             m = &m[16..];
         }
 
-        for i in 0..m.len() {
-            self.buffer[i] = m[i];
-        }
+        self.buffer[..m.len()].copy_from_slice(m);
         self.leftover = m.len();
     }
 

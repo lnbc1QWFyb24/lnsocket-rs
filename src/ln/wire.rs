@@ -39,13 +39,13 @@ pub enum Message<T> {
 impl<T: core::fmt::Debug + Type + Writeable> Writeable for Message<T> {
     fn write<W: Writer>(&self, writer: &mut W) -> Result<(), io::Error> {
         match self {
-            &Message::Init(ref msg) => msg.write(writer),
-            &Message::Error(ref msg) => msg.write(writer),
-            &Message::Warning(ref msg) => msg.write(writer),
-            &Message::Ping(ref msg) => msg.write(writer),
-            &Message::Pong(ref msg) => msg.write(writer),
-            &Message::Unknown(_) => Ok(()),
-            &Message::Custom(ref msg) => msg.write(writer),
+            Message::Init(msg) => msg.write(writer),
+            Message::Error(msg) => msg.write(writer),
+            Message::Warning(msg) => msg.write(writer),
+            Message::Ping(msg) => msg.write(writer),
+            Message::Pong(msg) => msg.write(writer),
+            Message::Unknown(_) => Ok(()),
+            Message::Custom(msg) => msg.write(writer),
         }
     }
 }
@@ -54,13 +54,13 @@ impl<T: core::fmt::Debug + Type> Type for Message<T> {
     /// Returns the type that was used to decode the message payload.
     fn type_id(&self) -> u16 {
         match self {
-            &Message::Init(ref msg) => msg.type_id(),
-            &Message::Error(ref msg) => msg.type_id(),
-            &Message::Warning(ref msg) => msg.type_id(),
-            &Message::Ping(ref msg) => msg.type_id(),
-            &Message::Pong(ref msg) => msg.type_id(),
-            &Message::Unknown(type_id) => type_id,
-            &Message::Custom(ref msg) => msg.type_id(),
+            Message::Init(msg) => msg.type_id(),
+            Message::Error(msg) => msg.type_id(),
+            Message::Warning(msg) => msg.type_id(),
+            Message::Ping(msg) => msg.type_id(),
+            Message::Pong(msg) => msg.type_id(),
+            Message::Unknown(type_id) => *type_id,
+            Message::Custom(msg) => msg.type_id(),
         }
     }
 }

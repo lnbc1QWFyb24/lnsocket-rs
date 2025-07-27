@@ -27,7 +27,7 @@ use crate::util::ser::{VecWriter, Writeable};
 /// Maximum Lightning message data length according to
 /// [BOLT-8](https://github.com/lightning/bolts/blob/v1.0/08-transport.md#lightning-message-specification)
 /// and [BOLT-1](https://github.com/lightning/bolts/blob/master/01-messaging.md#lightning-message-format):
-pub const LN_MAX_MSG_LEN: usize = ::core::u16::MAX as usize; // Must be equal to 65535
+pub const LN_MAX_MSG_LEN: usize = u16::MAX as usize; // Must be equal to 65535
 
 /// The (rough) size buffer to pre-allocate when encoding a message. Messages should reliably be
 /// smaller than this size by at least 32 bytes or so.
@@ -210,14 +210,14 @@ impl PeerChannelEncryptor {
         our_key: &SecretKey,
         their_key: &PublicKey,
     ) -> ([u8; 50], [u8; 32]) {
-        let our_pub = PublicKey::from_secret_key(secp_ctx, &our_key);
+        let our_pub = PublicKey::from_secret_key(secp_ctx, our_key);
 
         let mut sha = Sha256::engine();
         sha.input(&state.h);
         sha.input(&our_pub.serialize()[..]);
         state.h = Sha256::from_engine(sha).to_byte_array();
 
-        let ss = SharedSecret::new(&their_key, &our_key);
+        let ss = SharedSecret::new(their_key, our_key);
         let temp_k = PeerChannelEncryptor::hkdf(state, ss);
 
         let mut res = [0; 50];
@@ -233,7 +233,7 @@ impl PeerChannelEncryptor {
     }
 
     #[inline]
-    fn inbound_noise_act<'a, 'b>(
+    fn inbound_noise_act(
         state: &mut BidirectionalNoiseState,
         act: &[u8],
         secret_key: &SecretKey,
@@ -283,7 +283,7 @@ impl PeerChannelEncryptor {
                 ref directional_state,
                 ref mut bidirectional_state,
             } => match directional_state {
-                &DirectionalNoiseState::Outbound { ref ie } => {
+                DirectionalNoiseState::Outbound { ie } => {
                     if *state != NoiseStep::PreActOne {
                         panic!("Requested act at wrong step");
                     }
@@ -291,7 +291,7 @@ impl PeerChannelEncryptor {
                     let (res, _) = PeerChannelEncryptor::outbound_noise_act(
                         secp_ctx,
                         bidirectional_state,
-                        &ie,
+                        ie,
                         &self.their_node_id.unwrap(),
                     );
                     *state = NoiseStep::PostActOne;
@@ -368,13 +368,13 @@ impl PeerChannelEncryptor {
                 ref directional_state,
                 ref mut bidirectional_state,
             } => match directional_state {
-                &DirectionalNoiseState::Outbound { ref ie } => {
+                DirectionalNoiseState::Outbound { ie } => {
                     if *state != NoiseStep::PostActOne {
                         panic!("Requested act at wrong step");
                     }
 
                     let (re, temp_k2) =
-                        PeerChannelEncryptor::inbound_noise_act(bidirectional_state, act_two, &ie)?;
+                        PeerChannelEncryptor::inbound_noise_act(bidirectional_state, act_two, ie)?;
 
                     let mut res = [0; 66];
                     let our_node_id = node_signer.public_key(secp_ctx);
@@ -392,7 +392,7 @@ impl PeerChannelEncryptor {
                     sha.input(&res[1..50]);
                     bidirectional_state.h = Sha256::from_engine(sha).to_byte_array();
 
-                    let ss = SharedSecret::new(&re, &node_signer);
+                    let ss = SharedSecret::new(&re, node_signer);
                     let temp_k = PeerChannelEncryptor::hkdf(bidirectional_state, ss);
 
                     PeerChannelEncryptor::encrypt_with_ad(
@@ -403,7 +403,7 @@ impl PeerChannelEncryptor {
                         &[0; 0],
                     );
                     final_hkdf = hkdf_extract_expand_twice(&bidirectional_state.ck, &[0; 0]);
-                    ck = bidirectional_state.ck.clone();
+                    ck = bidirectional_state.ck;
                     res
                 } //_ => panic!("Wrong direction for act"),
             },
@@ -414,7 +414,7 @@ impl PeerChannelEncryptor {
         self.noise_state = NoiseState::Finished {
             sk,
             sn: 0,
-            sck: ck.clone(),
+            sck: ck,
             rk,
             rn: 0,
             rck: ck,

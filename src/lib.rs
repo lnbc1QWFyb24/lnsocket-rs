@@ -16,6 +16,7 @@ mod sign;
 mod socket_addr;
 mod util;
 
+pub use commando::CommandoClient;
 pub use error::Error;
 pub use lnsocket::LNSocket;
 
@@ -59,7 +60,7 @@ pub mod io_extras {
                     count += n as u64;
                 }
                 Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {}
-                Err(e) => return Err(e.into()),
+                Err(e) => return Err(e),
             };
         }
         Ok(count)
@@ -73,7 +74,7 @@ pub mod io_extras {
                 Ok(0) => break,
                 Ok(n) => result.extend_from_slice(&buf[0..n]),
                 Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {}
-                Err(e) => return Err(e.into()),
+                Err(e) => return Err(e),
             };
         }
         Ok(result)

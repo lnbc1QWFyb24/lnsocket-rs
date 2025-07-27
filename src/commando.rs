@@ -168,7 +168,7 @@ impl CommandoClient {
         Ok(req_id)
     }
 
-    fn update_chunks<'a>(&'a mut self, mut cont: CommandoReplyChunk) -> &'a [u8] {
+    fn update_chunks(&mut self, mut cont: CommandoReplyChunk) -> &[u8] {
         self.chunks
             .entry(cont.req_id)
             .and_modify(|chunks| chunks.append(&mut cont.chunk))
@@ -221,7 +221,7 @@ impl CommandoClient {
 
     async fn read(&mut self, socket: &mut LNSocket) -> Result<Message<CommandoResponse>, Error> {
         let commando_msg: Message<IncomingCommandoMessage> = socket
-            .read_custom(|typ, buf| Ok(commando::read_incoming_commando_message(typ, buf)?))
+            .read_custom(|typ, buf| commando::read_incoming_commando_message(typ, buf))
             .await?;
 
         Ok(match commando_msg {
