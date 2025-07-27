@@ -2,6 +2,8 @@
 
 A Rust library for establishing connections to Lightning Network nodes. This library provides low-level primitives for establishing encrypted communication channels with Lightning Network nodes using the Noise_XK protocol as specified in [BOLT #8](https://github.com/lightning/bolts/blob/master/08-transport.md).
 
+lnsocket also comes batteries included with Commando support, allowing you to call RPCs on core-lightning nodes remotely!
+
 ## Overview
 
 `lnsocket-rs` allows you to establish secure connections to Lightning Network nodes and exchange Lightning Network messages. It's built using components from the [Lightning Development Kit (LDK)](https://lightningdevkit.org/) and offers a lightweight, focused API for Lightning Network communication.
