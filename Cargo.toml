@@ -2,6 +2,15 @@
 name = "lnsocket"
 version = "0.1.0"
 edition = "2024"
+description = "An async lightning network socket with with core-lightning rpc support"
+authors = ["William Casarin <jb55@jb55.com>"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/jb55/lnsocket-rs"    # update this
+homepage = "https://github.com/jb55/lnsocket-rs"      # update if you have docs site
+documentation = "https://docs.rs/lnsocket"
+keywords = ["lightning", "bolt8", "noise", "lnsocket", "bitcoin"]
+categories = ["cryptography::cryptocurrencies", "network-programming", "asynchronous"]
 
 [dependencies]
 bitcoin = { version = "0.32.5", features = ["std", "rand", "rand-std"] }
