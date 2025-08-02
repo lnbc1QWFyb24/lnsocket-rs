@@ -152,15 +152,25 @@ impl CommandoClient {
         self.next_id.fetch_add(1, Ordering::Relaxed)
     }
 
-    /// Send a Commando request and wait for final JSON (internal req_id, no streams).
     pub async fn call(
         &self,
         method: impl Into<String>,
         params: Value,
         wait: Option<Duration>,
     ) -> Result<Value, Error> {
+        self.call_with_rune(self.rune.clone(), method, params, wait)
+            .await
+    }
+
+    pub async fn call_with_rune(
+        &self,
+        rune: String,
+        method: impl Into<String>,
+        params: Value,
+        wait: Option<Duration>,
+    ) -> Result<Value, Error> {
         let (done_tx, done_rx) = oneshot::channel();
-        let cmd = CommandoCommand::new(self.alloc_id(), method.into(), self.rune.clone(), params);
+        let cmd = CommandoCommand::new(self.alloc_id(), method.into(), rune, params);
 
         self.tx
             .send(Ctrl::Start { cmd, done_tx })
