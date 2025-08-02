@@ -1,14 +1,23 @@
 use crate::Error;
 use crate::LNSocket;
-use crate::commando;
-use crate::ln::msgs::{self, DecodeError};
+use crate::ln::msgs;
+use crate::ln::msgs::DecodeError;
 use crate::ln::wire::Message;
 use crate::ln::wire::Type;
 use crate::util::ser::{LengthLimitedRead, Readable, Writeable, Writer};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::io;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
+use tokio::sync::mpsc;
+use tokio::sync::oneshot;
+use tokio::time::timeout;
+
+pub const COMMANDO_COMMAND: u16 = 0x4c4f;
+pub const COMMANDO_REPLY_CONT: u16 = 0x594b;
+pub const COMMANDO_REPLY_TERM: u16 = 0x594d;
 
 impl CommandoCommand {
     pub fn new(id: u64, method: String, rune: String, params: Value) -> Self {
@@ -62,7 +71,7 @@ pub fn read_incoming_commando_message<R: LengthLimitedRead>(
     typ: u16,
     buf: &mut R,
 ) -> Result<Option<IncomingCommandoMessage>, DecodeError> {
-    if typ == commando::COMMANDO_REPLY_CONT {
+    if typ == COMMANDO_REPLY_CONT {
         let req_id: u64 = Readable::read(buf)?;
         let mut chunk = Vec::with_capacity(buf.remaining_bytes() as usize);
         buf.read_to_end(&mut chunk)?;
@@ -70,7 +79,7 @@ pub fn read_incoming_commando_message<R: LengthLimitedRead>(
             req_id,
             chunk,
         })))
-    } else if typ == commando::COMMANDO_REPLY_TERM {
+    } else if typ == COMMANDO_REPLY_TERM {
         let req_id: u64 = Readable::read(buf)?;
         let mut chunk = Vec::with_capacity(buf.remaining_bytes() as usize);
         buf.read_to_end(&mut chunk)?;
@@ -95,17 +104,6 @@ impl Writeable for CommandoCommand {
     }
 }
 
-/*
-impl Readable for CommandoReplyChunk {
-    fn read<R: Read>(reader: &mut R) -> Result<Self, DecodeError> {
-        let req_id: u64 = Readable::read(reader)?;
-        let mut chunk = Vec::with_capacity(buf.remaining_bytes() as usize);
-        buf.read_to_end(&mut chunk)?;
-        Ok(Self { req_id, chunk })
-    }
-}
-*/
-
 impl Type for CommandoCommand {
     fn type_id(&self) -> u16 {
         COMMANDO_COMMAND
@@ -121,148 +119,122 @@ impl Type for IncomingCommandoMessage {
     }
 }
 
-pub const COMMANDO_COMMAND: u16 = 0x4c4f;
-pub const COMMANDO_REPLY_CONT: u16 = 0x594b;
-pub const COMMANDO_REPLY_TERM: u16 = 0x594d;
+// Control messages to the pump task
+enum Ctrl {
+    Start {
+        cmd: CommandoCommand,
+        done_tx: oneshot::Sender<Result<Value, Error>>,
+    },
+}
 
-/// A lightweight client for Core Lightning’s Commando RPC protocol.
-///
-/// This client:
-/// - Wraps an [`LNSocket`],
-/// - Sends JSON-RPC requests (`method` + `params`),
-/// - Streams partial reply chunks until completion.
-///
-/// ### Example
-/// ```no_run
-/// use lnsocket::{LNSocket, CommandoClient};
-/// use bitcoin::secp256k1::{SecretKey, PublicKey, rand};
-/// use serde_json::json;
-/// # async fn example(peer: PublicKey) -> Result<(), lnsocket::Error> {
-/// let sk = SecretKey::new(&mut rand::thread_rng());
-/// let mut sock = LNSocket::connect_and_init(sk, peer, "ln.damus.io:9735").await?;
-///
-/// let mut commando = CommandoClient::new("your-rune-token");
-/// let resp = commando.call(&mut sock, "getinfo", json!({})).await?;
-/// println!("node info: {resp}");
-/// # Ok(()) }
-/// ```
+/// Public client: generate IDs internally; expose only `call_json`.
 pub struct CommandoClient {
-    req_ids: u64,
+    tx: mpsc::Sender<Ctrl>,
     rune: String,
-    chunks: HashMap<u64, Vec<u8>>,
-}
-
-#[derive(Clone, Debug)]
-pub struct CompleteCommandoResponse {
-    req_id: u64,
-    json: serde_json::Value,
-}
-
-#[derive(Clone, Debug)]
-pub enum CommandoResponse {
-    Partial(u64),
-    Complete(CompleteCommandoResponse),
+    next_id: AtomicU64,
 }
 
 impl CommandoClient {
-    pub fn new(rune: impl Into<String>) -> Self {
-        let req_ids: u64 = 1;
+    /// Spawn the background pump that owns the LNSocket.
+    pub fn spawn(sock: LNSocket, rune: impl Into<String>) -> Self {
+        let (tx, rx) = mpsc::channel::<Ctrl>(128);
+        tokio::spawn(pump(sock, rx));
+
         Self {
-            req_ids,
+            tx,
             rune: rune.into(),
-            chunks: Default::default(),
+            next_id: AtomicU64::new(1),
         }
     }
 
-    async fn send(
-        &mut self,
-        socket: &mut LNSocket,
-        method: impl Into<String>,
-        params: Value,
-    ) -> Result<u64, io::Error> {
-        self.req_ids += 1;
-        let req_id = self.req_ids;
-        let command = CommandoCommand::new(req_id, method.into(), self.rune.clone(), params);
-
-        socket.write(&command).await?;
-
-        Ok(req_id)
+    #[inline]
+    fn alloc_id(&self) -> u64 {
+        self.next_id.fetch_add(1, Ordering::Relaxed)
     }
 
-    fn update_chunks(&mut self, mut cont: CommandoReplyChunk) -> &[u8] {
-        self.chunks
-            .entry(cont.req_id)
-            .and_modify(|chunks| chunks.append(&mut cont.chunk))
-            .or_insert(cont.chunk)
-    }
-
-    fn finalize_chunks(
-        &mut self,
-        cont: CommandoReplyChunk,
-    ) -> Result<CompleteCommandoResponse, Error> {
-        let req_id = cont.req_id;
-        let json = {
-            let r = self.update_chunks(cont);
-            serde_json::from_slice(r)?
-        };
-        self.chunks.remove(&req_id);
-        Ok(CompleteCommandoResponse { req_id, json })
-    }
-
+    /// Send a Commando request and wait for final JSON (internal req_id, no streams).
     pub async fn call(
-        &mut self,
-        socket: &mut LNSocket,
+        &self,
         method: impl Into<String>,
         params: Value,
-    ) -> Result<serde_json::Value, Error> {
-        let req_id = self.send(socket, method, params).await?;
+        wait: Option<Duration>,
+    ) -> Result<Value, Error> {
+        let (done_tx, done_rx) = oneshot::channel();
+        let cmd = CommandoCommand::new(self.alloc_id(), method.into(), self.rune.clone(), params);
 
-        loop {
-            match self.read(socket).await? {
-                Message::Custom(CommandoResponse::Complete(msg)) if msg.req_id == req_id => {
-                    return Ok(msg.json);
-                }
+        self.tx
+            .send(Ctrl::Start { cmd, done_tx })
+            .await
+            .map_err(|_| Error::Io(std::io::ErrorKind::BrokenPipe))?;
 
-                // rusty told me once that we will get disconnected if we don't reply to these
-                Message::Ping(ping) => {
-                    socket
-                        .write(&msgs::Pong {
-                            byteslen: ping.ponglen,
-                        })
-                        .await?;
-                }
-
-                _ => {}
-            }
-
-            // TODO: timeout?
-            //println!("skipping {result:?}");
+        match wait {
+            Some(d) => timeout(d, async { done_rx.await })
+                .await
+                .map_err(|_| Error::Io(std::io::ErrorKind::TimedOut))?
+                .map_err(|_| Error::Io(std::io::ErrorKind::BrokenPipe))?,
+            None => done_rx
+                .await
+                .map_err(|_| Error::Io(std::io::ErrorKind::BrokenPipe))?,
         }
     }
+}
 
-    async fn read(&mut self, socket: &mut LNSocket) -> Result<Message<CommandoResponse>, Error> {
-        let commando_msg: Message<IncomingCommandoMessage> = socket
-            .read_custom(|typ, buf| commando::read_incoming_commando_message(typ, buf))
-            .await?;
+// Background task: single reader + demux per internal req_id.
+async fn pump(mut sock: LNSocket, mut rx: mpsc::Receiver<Ctrl>) {
+    struct InProgress {
+        done_tx: oneshot::Sender<Result<Value, Error>>,
+        buf: Vec<u8>,
+    }
+    let mut pending: HashMap<u64, InProgress> = HashMap::new();
 
-        Ok(match commando_msg {
-            Message::Custom(incoming) => match incoming {
-                IncomingCommandoMessage::Chunk(chunk) => {
-                    let req_id = chunk.req_id;
-                    self.update_chunks(chunk);
-                    Message::Custom(CommandoResponse::Partial(req_id))
+    loop {
+        tokio::select! {
+            Some(ctrl) = rx.recv() => match ctrl {
+                Ctrl::Start { cmd, done_tx } => {
+                    let req_id = cmd.req_id();
+                    // register before write to avoid race with fast replies
+                    pending.insert(req_id, InProgress { done_tx, buf: Vec::new() });
+                    if let Err(e) = sock.write(&cmd).await {
+                        if let Some(p) = pending.remove(&req_id) {
+                            let _ = p.done_tx.send(Err(e.into()));
+                        }
+                    }
                 }
-                IncomingCommandoMessage::Done(chunk) => {
-                    Message::Custom(CommandoResponse::Complete(self.finalize_chunks(chunk)?))
-                }
+                //Ctrl::Pong(pong) => { let _ = sock.write(&pong).await; }
             },
 
-            Message::Init(a) => Message::Init(a),
-            Message::Error(a) => Message::Error(a),
-            Message::Warning(a) => Message::Warning(a),
-            Message::Ping(a) => Message::Ping(a),
-            Message::Pong(a) => Message::Pong(a),
-            Message::Unknown(unk) => Message::Unknown(unk),
-        })
+            res = sock.read_custom(|typ, buf| read_incoming_commando_message(typ, buf)) => {
+                match res {
+                    Err(e) => {
+                        for (_, p) in pending.drain() {
+                            let _ = p.done_tx.send(Err(e.clone()));
+                        }
+                        break; // drop on fatal read error
+                    }
+                    Ok(Message::Ping(ping)) => {
+                        tracing::trace!("pump: pingpong {}", ping.ponglen);
+                        let _ = sock.write(&msgs::Pong { byteslen: ping.ponglen }).await;
+                    }
+                    Ok(Message::Custom(IncomingCommandoMessage::Chunk(chunk))) => {
+                        tracing::trace!("pump: [{}] chunk_partial {}", chunk.req_id, chunk.chunk.len());
+                        if let Some(p) = pending.get_mut(&chunk.req_id) {
+                            p.buf.extend_from_slice(&chunk.chunk);
+                        }
+                    }
+                    Ok(Message::Custom(IncomingCommandoMessage::Done(chunk))) => {
+                        tracing::trace!("pump: [{}] chunk_done {}", chunk.req_id, chunk.chunk.len());
+                        if let Some(mut p) = pending.remove(&chunk.req_id) {
+                            p.buf.extend_from_slice(&chunk.chunk);
+                            let parsed = serde_json::from_slice::<Value>(&p.buf).map_err(Error::from);
+                            let _ = p.done_tx.send(parsed);
+                        }
+                    }
+                    Ok(other) => {
+                        tracing::trace!("pump: other_msg {}", other.type_id());
+                        //tracing::trace!()
+                    }
+                }
+            }
+        }
     }
 }

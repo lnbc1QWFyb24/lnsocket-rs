@@ -3,13 +3,13 @@ use std::fmt;
 use std::io;
 use std::net::AddrParseError;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Error {
     NotConnected,
     FirstMessageNotInit,
     DnsError,
     Io(io::ErrorKind),
-    Json(serde_json::Error),
+    Json,
     Lightning(LightningError),
     Decode(DecodeError),
     AddrParse(std::net::AddrParseError),
@@ -24,7 +24,7 @@ impl fmt::Display for Error {
             Error::Io(kind) => write!(f, "I/O error: {}", kind),
             Error::Lightning(err) => write!(f, "Lightning error: {:?}", err),
             Error::Decode(err) => write!(f, "decoding error: {:?}", err),
-            Error::Json(err) => write!(f, "json error: {:?}", err),
+            Error::Json => write!(f, "json error"),
             Error::AddrParse(err) => write!(f, "Address parse error: {}", err),
         }
     }
@@ -37,8 +37,8 @@ impl From<io::Error> for Error {
 }
 
 impl From<serde_json::Error> for Error {
-    fn from(err: serde_json::Error) -> Self {
-        Self::Json(err)
+    fn from(_err: serde_json::Error) -> Self {
+        Self::Json
     }
 }
 

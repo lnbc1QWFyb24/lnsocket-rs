@@ -184,6 +184,10 @@ mod tests {
     #[tokio::test]
     async fn test_commando() -> Result<(), Error> {
         use crate::commando::CommandoClient;
+        use bitcoin::secp256k1::{PublicKey, SecretKey, rand};
+        use serde_json::json;
+        use std::str::FromStr;
+        use std::time::Duration;
 
         let key = SecretKey::new(&mut rand::thread_rng());
         let their_key = PublicKey::from_str(
@@ -191,22 +195,26 @@ mod tests {
         )
         .unwrap();
 
-        let mut lnsocket = LNSocket::connect_and_init(key, their_key, "ln.damus.io:9735").await?;
-        let mut commando = CommandoClient::new(
+        // Connect as before
+        let sock = LNSocket::connect_and_init(key, their_key, "ln.damus.io:9735").await?;
+
+        // New API: spawn the client (it owns the socket + pump task)
+        let commando = CommandoClient::spawn(
+            sock,
             "hfYByx-RDwdBfAK-vOWeOCDJVYlvKSioVKU_y7jccZU9MjkmbWV0aG9kPWdldGluZm8=",
         );
 
-        let resp = commando
-            .call(&mut lnsocket, "getinfo", serde_json::json!({}))
-            .await?;
+        // New call signature: no socket arg, optional wait timeout
+        let resp_fut = commando.call("getinfo", json!({}), Some(Duration::from_secs(15)));
 
-        let bad_resp = commando
-            .call(
-                &mut lnsocket,
-                "invoice",
-                serde_json::json!({"msatoshi": "any"}),
-            )
-            .await?;
+        let bad_resp_fut = commando.call(
+            "invoice",
+            json!({"msatoshi": "any"}),
+            Some(Duration::from_secs(15)),
+        );
+
+        let resp = resp_fut.await?;
+        let bad_resp = bad_resp_fut.await?;
 
         println!("{}", serde_json::to_string(&resp).unwrap());
         println!("{}", serde_json::to_string(&bad_resp).unwrap());
