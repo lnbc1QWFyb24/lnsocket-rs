@@ -132,11 +132,12 @@ pub struct CommandoClient {
     tx: mpsc::Sender<Ctrl>,
     rune: String,
     next_id: AtomicU64,
+    timeout: Option<Duration>,
 }
 
 impl CommandoClient {
     /// Spawn the background pump that owns the LNSocket.
-    pub fn spawn(sock: LNSocket, rune: impl Into<String>) -> Self {
+    pub fn spawn(sock: LNSocket, rune: impl Into<String>, timeout: Option<Duration>) -> Self {
         let (tx, rx) = mpsc::channel::<Ctrl>(128);
         tokio::spawn(pump(sock, rx));
 
@@ -144,6 +145,7 @@ impl CommandoClient {
             tx,
             rune: rune.into(),
             next_id: AtomicU64::new(1),
+            timeout,
         }
     }
 
@@ -152,14 +154,8 @@ impl CommandoClient {
         self.next_id.fetch_add(1, Ordering::Relaxed)
     }
 
-    pub async fn call(
-        &self,
-        method: impl Into<String>,
-        params: Value,
-        wait: Option<Duration>,
-    ) -> Result<Value, Error> {
-        self.call_with_rune(self.rune.clone(), method, params, wait)
-            .await
+    pub async fn call(&self, method: impl Into<String>, params: Value) -> Result<Value, Error> {
+        self.call_with_rune(self.rune.clone(), method, params).await
     }
 
     pub async fn call_with_rune(
@@ -167,7 +163,6 @@ impl CommandoClient {
         rune: String,
         method: impl Into<String>,
         params: Value,
-        wait: Option<Duration>,
     ) -> Result<Value, Error> {
         let (done_tx, done_rx) = oneshot::channel();
         let cmd = CommandoCommand::new(self.alloc_id(), method.into(), rune, params);
@@ -177,7 +172,7 @@ impl CommandoClient {
             .await
             .map_err(|_| Error::Io(std::io::ErrorKind::BrokenPipe))?;
 
-        match wait {
+        match self.timeout {
             Some(d) => timeout(d, async { done_rx.await })
                 .await
                 .map_err(|_| Error::Io(std::io::ErrorKind::TimedOut))?
