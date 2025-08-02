@@ -38,7 +38,7 @@ async fn test_commando() -> Result<(), Error> {
     let mut commando = CommandoClient::new(
         "hfYByx-RDwdBfAK-vOWeOCDJVYlvKSioVKU_y7jccZU9MjkmbWV0aG9kPWdldGluZm8=",
     );
-    let resp = commando.call(&mut lnsocket, "getinfo", vec![]).await?;
+    let resp = commando.call(&mut lnsocket, "getinfo", json!({})).await?;
 
     println!("{}", serde_json::to_string(&resp).unwrap());
 

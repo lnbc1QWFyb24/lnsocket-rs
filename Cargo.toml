@@ -1,6 +1,6 @@
 [package]
 name = "lnsocket"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 description = "An async lightning network socket with with core-lightning rpc support"
 authors = ["William Casarin <jb55@jb55.com>"]

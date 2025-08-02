@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::io;
 
 impl CommandoCommand {
-    pub fn new(id: u64, method: String, rune: String, params: Vec<serde_json::Value>) -> Self {
+    pub fn new(id: u64, method: String, rune: String, params: Value) -> Self {
         Self {
             id,
             method,
@@ -32,7 +32,7 @@ impl CommandoCommand {
         &self.rune
     }
 
-    pub fn params(&self) -> &[serde_json::Value] {
+    pub fn params(&self) -> &Value {
         &self.params
     }
 }
@@ -42,7 +42,7 @@ impl CommandoCommand {
 pub struct CommandoCommand {
     id: u64,
     method: String,
-    params: Vec<serde_json::Value>,
+    params: Value,
     rune: String,
 }
 
@@ -134,14 +134,15 @@ pub const COMMANDO_REPLY_TERM: u16 = 0x594d;
 ///
 /// ### Example
 /// ```no_run
-/// # use lnsocket::{LNSocket, CommandoClient};
-/// # use bitcoin::secp256k1::{SecretKey, PublicKey, rand};
+/// use lnsocket::{LNSocket, CommandoClient};
+/// use bitcoin::secp256k1::{SecretKey, PublicKey, rand};
+/// use serde_json::json;
 /// # async fn example(peer: PublicKey) -> Result<(), lnsocket::Error> {
 /// let sk = SecretKey::new(&mut rand::thread_rng());
 /// let mut sock = LNSocket::connect_and_init(sk, peer, "ln.damus.io:9735").await?;
 ///
 /// let mut commando = CommandoClient::new("your-rune-token");
-/// let resp = commando.call(&mut sock, "getinfo", vec![]).await?;
+/// let resp = commando.call(&mut sock, "getinfo", json!({})).await?;
 /// println!("node info: {resp}");
 /// # Ok(()) }
 /// ```
@@ -177,7 +178,7 @@ impl CommandoClient {
         &mut self,
         socket: &mut LNSocket,
         method: impl Into<String>,
-        params: Vec<Value>,
+        params: Value,
     ) -> Result<u64, io::Error> {
         self.req_ids += 1;
         let req_id = self.req_ids;
@@ -212,7 +213,7 @@ impl CommandoClient {
         &mut self,
         socket: &mut LNSocket,
         method: impl Into<String>,
-        params: Vec<Value>,
+        params: Value,
     ) -> Result<serde_json::Value, Error> {
         let req_id = self.send(socket, method, params).await?;
 

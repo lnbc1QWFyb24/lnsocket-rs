@@ -195,9 +195,21 @@ mod tests {
         let mut commando = CommandoClient::new(
             "hfYByx-RDwdBfAK-vOWeOCDJVYlvKSioVKU_y7jccZU9MjkmbWV0aG9kPWdldGluZm8=",
         );
-        let resp = commando.call(&mut lnsocket, "getinfo", vec![]).await?;
+
+        let resp = commando
+            .call(&mut lnsocket, "getinfo", serde_json::json!({}))
+            .await?;
+
+        let bad_resp = commando
+            .call(
+                &mut lnsocket,
+                "invoice",
+                serde_json::json!({"msatoshi": "any"}),
+            )
+            .await?;
 
         println!("{}", serde_json::to_string(&resp).unwrap());
+        println!("{}", serde_json::to_string(&bad_resp).unwrap());
 
         Ok(())
     }
