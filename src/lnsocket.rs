@@ -14,12 +14,39 @@ use tokio::net::{TcpSocket, TcpStream, lookup_host};
 
 const ACT_TWO_SIZE: usize = 50;
 
+/// A Lightning Network TCP socket that performs the BOLT 8 Noise handshake and message encryption.
+///
+/// [`LNSocket`] wraps a `tokio::net::TcpStream` with Noise state (via [`PeerChannelEncryptor`])
+/// to handle encrypted Lightning messages over TCP.
+///
+/// # Typical usage
+/// ```no_run
+/// use bitcoin::secp256k1::{SecretKey, PublicKey, rand};
+/// use lnsocket::LNSocket;
+/// use lnsocket::ln::msgs;
+///
+/// # async fn example(peer: PublicKey) -> Result<(), lnsocket::Error> {
+/// let sk = SecretKey::new(&mut rand::thread_rng());
+/// let mut sock = LNSocket::connect_and_init(sk, peer, "node.example.com:9735").await?;
+/// sock.write(&msgs::Ping { ponglen: 4, byteslen: 8 }).await?;
+/// let msg = sock.read().await?;
+/// # Ok(()) }
+/// ```
+///
+/// ⚠️ This struct does **not** retry connections or manage reconnections.
 pub struct LNSocket {
     channel: PeerChannelEncryptor,
     stream: TcpStream,
 }
 
 impl LNSocket {
+    /// Connect to a Lightning peer and complete the BOLT 8 Noise handshake.
+    ///
+    /// Resolves the given `addr`, establishes a TCP connection, and performs act1/act2/act3
+    /// handshake using `our_key` and the peer’s public key.
+    ///
+    /// Does **not** send or expect an `init` message.  
+    /// Use [`LNSocket::connect_and_init`] if you want handshake + `init` exchange.
     pub async fn connect(
         our_key: SecretKey,
         their_pubkey: PublicKey,
@@ -63,9 +90,10 @@ impl LNSocket {
         Ok(lnsocket)
     }
 
-    /// No commands will work until you exchange init messages with your peer
+    /// Completes the initial `init` message exchange.
     ///
-    /// See [`connect_and_init`]
+    /// This must be called before issuing any other Lightning messages.
+    /// Fails if the first incoming message isn’t `Init`.
     pub async fn perform_init(&mut self) -> Result<(), Error> {
         // first message should be init, if not, we fail
         if let Message::Init(_) = self.read().await? {

@@ -1,16 +1,42 @@
-// This file is Copyright its original authors, visible in version control
-// history.
-//
-// This file is licensed under the Apache License, Version 2.0 <LICENSE-APACHE
-// or http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
-// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your option.
-// You may not use this file except in accordance with one or both of these
-// licenses.
+//! # LNSocket
+//!
+//! `lnsocket` is an async Lightning Network socket library implementing the BOLT 8 Noise handshake
+//! and typed Lightning wire message framing over TCP, using `tokio`.
+//!
+//! This crate is a **minimal, opinionated** wrapper around [`PeerChannelEncryptor`] that:
+//! - Resolves a `host:port` string into a socket address,
+//! - Opens a TCP connection (no retries or built-in timeouts),
+//! - Completes the three-act Noise handshake (act1, act2, act3),
+//! - Optionally exchanges `init` messages ([`LNSocket::perform_init`]),
+//! - Provides typed `read`/`write` helpers for Lightning wire messages.
+//!
+//! ## ⚠️ Notes
+//! - Key management is the caller’s responsibility.
+//! - This crate does **not** handle reconnect logic, backpressure, or keepalives.
+//! - [`LNSocket::perform_init`] uses minimal feature negotiation by design.
+//!
+//! ## Related modules
+//! - [`LNSocket`] — Low-level Lightning Network TCP + Noise socket
+//! - [`CommandoClient`] — Simple client for [Core Lightning Commando RPC](https://docs.corelightning.org/reference/commando)
+//!
+//! ## Example
+//! ```no_run
+//! use bitcoin::secp256k1::{SecretKey, PublicKey, rand};
+//! use lnsocket::LNSocket;
+//!
+//! # async fn demo(their_pubkey: PublicKey) -> Result<(), lnsocket::Error> {
+//! let our_key = SecretKey::new(&mut rand::thread_rng());
+//! let mut sock = LNSocket::connect_and_init(our_key, their_pubkey, "ln.example.com:9735").await?;
+//! // write/read Lightning wire messages
+//! # Ok(()) }
+//! ```
+//!
+//! See [`CommandoClient`] for sending RPC calls over the socket.
 
 pub mod commando;
 mod crypto;
 pub mod error;
-mod ln;
+pub mod ln;
 pub mod lnsocket;
 mod sign;
 mod socket_addr;

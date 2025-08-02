@@ -189,7 +189,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "lnsocket-rs"
+name = "lnsocket"
 version = "0.1.0"
 dependencies = [
  "bitcoin",

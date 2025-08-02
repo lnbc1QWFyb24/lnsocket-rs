@@ -125,6 +125,26 @@ pub const COMMANDO_COMMAND: u16 = 0x4c4f;
 pub const COMMANDO_REPLY_CONT: u16 = 0x594b;
 pub const COMMANDO_REPLY_TERM: u16 = 0x594d;
 
+/// A lightweight client for Core Lightning’s Commando RPC protocol.
+///
+/// This client:
+/// - Wraps an [`LNSocket`],
+/// - Sends JSON-RPC requests (`method` + `params`),
+/// - Streams partial reply chunks until completion.
+///
+/// ### Example
+/// ```no_run
+/// # use lnsocket::{LNSocket, CommandoClient};
+/// # use bitcoin::secp256k1::{SecretKey, PublicKey, rand};
+/// # async fn example(peer: PublicKey) -> Result<(), lnsocket::Error> {
+/// let sk = SecretKey::new(&mut rand::thread_rng());
+/// let mut sock = LNSocket::connect_and_init(sk, peer, "ln.damus.io:9735").await?;
+///
+/// let mut commando = CommandoClient::new("your-rune-token");
+/// let resp = commando.call(&mut sock, "getinfo", vec![]).await?;
+/// println!("node info: {resp}");
+/// # Ok(()) }
+/// ```
 pub struct CommandoClient {
     req_ids: u64,
     rune: String,
