@@ -14,6 +14,12 @@ use tokio::net::{TcpSocket, TcpStream, lookup_host};
 
 const ACT_TWO_SIZE: usize = 50;
 
+struct ReconnectData {
+    our_key: SecretKey,
+    their_pubkey: PublicKey,
+    addr: String,
+}
+
 /// A Lightning Network TCP socket that performs the BOLT 8 Noise handshake and message encryption.
 ///
 /// [`LNSocket`] wraps a `tokio::net::TcpStream` with Noise state (via [`PeerChannelEncryptor`])
@@ -37,6 +43,7 @@ const ACT_TWO_SIZE: usize = 50;
 pub struct LNSocket {
     channel: PeerChannelEncryptor,
     stream: TcpStream,
+    reconnect: ReconnectData,
 }
 
 impl LNSocket {
@@ -77,7 +84,15 @@ impl LNSocket {
         // Finalize the handshake by sending act3
         stream.write_all(&act_three).await?;
 
-        Ok(Self { channel, stream })
+        Ok(Self {
+            channel,
+            stream,
+            reconnect: ReconnectData {
+                our_key: our_key.clone(),
+                their_pubkey,
+                addr: addr.to_string(),
+            },
+        })
     }
 
     pub async fn connect_and_init(
@@ -88,6 +103,16 @@ impl LNSocket {
         let mut lnsocket = LNSocket::connect(our_key, their_pubkey, addr).await?;
         lnsocket.perform_init().await?;
         Ok(lnsocket)
+    }
+
+    /// Build a brand-new socket using the stored reconnect inputs.
+    pub async fn reconnect_fresh(&self) -> Result<LNSocket, Error> {
+        LNSocket::connect_and_init(
+            self.reconnect.our_key.clone(),
+            self.reconnect.their_pubkey,
+            &self.reconnect.addr,
+        )
+        .await
     }
 
     /// Completes the initial `init` message exchange.
@@ -187,7 +212,6 @@ mod tests {
         use bitcoin::secp256k1::{PublicKey, SecretKey, rand};
         use serde_json::json;
         use std::str::FromStr;
-        use std::time::Duration;
 
         let key = SecretKey::new(&mut rand::thread_rng());
         let their_key = PublicKey::from_str(
@@ -205,13 +229,9 @@ mod tests {
         );
 
         // New call signature: no socket arg, optional wait timeout
-        let resp_fut = commando.call("getinfo", json!({}), Some(Duration::from_secs(15)));
+        let resp_fut = commando.call("getinfo", json!({}));
 
-        let bad_resp_fut = commando.call(
-            "invoice",
-            json!({"msatoshi": "any"}),
-            Some(Duration::from_secs(15)),
-        );
+        let bad_resp_fut = commando.call("invoice", json!({"msatoshi": "any"}));
 
         let resp = resp_fut.await?;
         let bad_resp = bad_resp_fut.await?;
