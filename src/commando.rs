@@ -117,7 +117,7 @@ impl CommandoConfig {
 impl Default for CommandoConfig {
     fn default() -> Self {
         Self {
-            timeout: Some(Duration::from_secs(5)),
+            timeout: Some(Duration::from_secs(30)),
             reconnect: ReconnectMode::Auto {
                 max_attempts: 10,
                 base_backoff: Duration::from_millis(200),
