@@ -3,6 +3,13 @@ use std::fmt;
 use std::io;
 use std::net::AddrParseError;
 
+/// Errors surfaced by this crate.
+///
+/// Notably, I/O failures are reduced to an `io::ErrorKind` so the type stays small and Send/Sync.
+/// For example, DNS resolution failure maps to `Error::DnsError`, other I/O paths map to
+/// `Error::Io(kind)`.
+///
+/// Display is human-readable; use pattern matching if you need to branch on kinds.
 #[derive(Debug, Clone)]
 pub enum Error {
     NotConnected,

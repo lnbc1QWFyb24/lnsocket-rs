@@ -1,37 +1,54 @@
 //! # LNSocket
 //!
-//! `lnsocket` is an async Lightning Network socket library implementing the BOLT 8 Noise handshake
-//! and typed Lightning wire message framing over TCP, using `tokio`.
+//! `lnsocket` is a minimal, async Lightning Network socket library built on `tokio`.
+//! It implements the BOLT 8 Noise handshake and typed Lightning wire framing, and
+//! it stays out of your way: no global state, no TLS, no heavy deps.
 //!
-//! This crate is a **minimal, opinionated** wrapper around [`PeerChannelEncryptor`] that:
-//! - Resolves a `host:port` string into a socket address,
-//! - Opens a TCP connection (no retries or built-in timeouts),
-//! - Completes the three-act Noise handshake (act1, act2, act3),
-//! - Optionally exchanges `init` messages ([`LNSocket::perform_init`]),
-//! - Provides typed `read`/`write` helpers for Lightning wire messages.
+//! ## What this crate gives you
+//! - **`LNSocket`** – connect over TCP, perform Noise (act1/2/3), and read/write typed BOLT#1 messages.
+//! - **`CommandoClient`** – a small client for Core Lightning **Commando** over a live `LNSocket`,
+//!   with a background pump, **auto-reconnect**, and **retry/resend** semantics.
 //!
-//! ## ⚠️ Notes
-//! - Key management is the caller’s responsibility.
-//! - This crate does **not** handle reconnect logic, backpressure, or keepalives.
-//! - [`LNSocket::perform_init`] uses minimal feature negotiation by design.
+//! ## Design philosophy
+//! - Keep the transport tight and explicit. You own key management, policies, and backpressure.
+//! - Avoid surprises: I/O errors return an `Error` that carries **`io::ErrorKind`** only.
 //!
-//! ## Related modules
-//! - [`LNSocket`] — Low-level Lightning Network TCP + Noise socket
-//! - [`CommandoClient`] — Simple client for [Core Lightning Commando RPC](https://docs.corelightning.org/reference/commando)
+//! ## Quick starts
 //!
-//! ## Example
+//! ### Low-level: just a Lightning socket
 //! ```no_run
 //! use bitcoin::secp256k1::{SecretKey, PublicKey, rand};
-//! use lnsocket::LNSocket;
-//!
+//! use lnsocket::{LNSocket, ln::msgs};
 //! # async fn demo(their_pubkey: PublicKey) -> Result<(), lnsocket::Error> {
 //! let our_key = SecretKey::new(&mut rand::thread_rng());
-//! let mut sock = LNSocket::connect_and_init(our_key, their_pubkey, "ln.example.com:9735").await?;
-//! // write/read Lightning wire messages
+//! let mut sock = LNSocket::connect_and_init(our_key, their_pubkey, "node.example.com:9735").await?;
+//! sock.write(&msgs::Ping { ponglen: 4, byteslen: 8 }).await?;
+//! let _msg = sock.read().await?; // e.g. expect a Pong
 //! # Ok(()) }
 //! ```
 //!
-//! See [`CommandoClient`] for sending RPC calls over the socket.
+//! ### Higher-level: Commando over LNSocket
+//! ```no_run
+//! use bitcoin::secp256k1::{SecretKey, PublicKey, rand};
+//! use lnsocket::{LNSocket, CommandoClient};
+//! use serde_json::json;
+//! # async fn demo(their_pubkey: PublicKey, rune: &str) -> Result<(), lnsocket::Error> {
+//! let key = SecretKey::new(&mut rand::thread_rng());
+//! let sock = LNSocket::connect_and_init(key, their_pubkey, "ln.example.com:9735").await?;
+//!
+//! // Spawns a background pump task. IDs are generated internally.
+//! let commando = CommandoClient::spawn(sock, rune);
+//!
+//! // Simple call with crate defaults (30s timeout, auto-reconnect, retry up to 3 times).
+//! let info = commando.call("getinfo", json!({})).await?;
+//! println!("getinfo: {}", info);
+//! # Ok(()) }
+//! ```
+//!
+//! ## Footguns & non-goals
+//! - No built-in keepalives/backpressure – handle in your app.
+//! - Reconnection logic lives in `CommandoClient`, **not** `LNSocket`.
+//! - `LNSocket::perform_init` performs a minimal `init` exchange by design.
 
 pub mod commando;
 mod crypto;

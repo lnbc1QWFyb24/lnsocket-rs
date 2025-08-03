@@ -19,29 +19,28 @@ Add to your `Cargo.toml`:
 lnsocket = "0.1.0"
 ```
 
-### Example
+## Commando over LNSocket
+
+This crate includes a small [Commando][commando] client that runs **over the same encrypted Lightning transport**.
 
 ```rust
+use bitcoin::secp256k1::{SecretKey, PublicKey, rand};
 use lnsocket::{LNSocket, CommandoClient};
-use bitcoin::secp256k1::{PublicKey, SecretKey};
+use serde_json::json;
+use lnsocket::commando::CallOpts;
 
-async fn test_commando() -> Result<(), Error> {
-    use crate::commando::CommandoClient;
-
+async fn commando_rpc_demo(pk: PublicKey, rune: &str) -> Result<(), lnsocket::Error> {
     let key = SecretKey::new(&mut rand::thread_rng());
-    let their_key = PublicKey::from_str(
-        "03f3c108ccd536b8526841f0a5c58212bb9e6584a1eb493080e7c1cc34f82dad71",
-    )
-    .unwrap();
+    let sock = LNSocket::connect_and_init(key, pk, "ln.example.com:9735").await?;
+    let client = CommandoClient::spawn(sock, rune);
 
-    let mut lnsocket = LNSocket::connect_and_init(key, their_key, "ln.damus.io:9735").await?;
-    let mut commando = CommandoClient::new(
-        "hfYByx-RDwdBfAK-vOWeOCDJVYlvKSioVKU_y7jccZU9MjkmbWV0aG9kPWdldGluZm8=",
-    );
-    let resp = commando.call(&mut lnsocket, "getinfo", json!({})).await?;
+    // Inherit client defaults (30s timeout, auto-reconnect with backoff,
+    // and retry up to 3 times). Override per call if needed:
+    let res = client.call("getinfo", json!({})).await?;
+    println!("{}", res);
 
-    println!("{}", serde_json::to_string(&resp).unwrap());
-
+    let opts = CallOpts::new().timeout(std::time::Duration::from_secs(5)).retry(5);
+    let channels = client.call_with_opts("listchannels", json!({}), &opts).await?;
     Ok(())
 }
 
@@ -63,3 +62,5 @@ at your option.
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+[commando]: https://docs.corelightning.org/reference/commando

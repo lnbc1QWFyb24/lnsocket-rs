@@ -39,7 +39,7 @@ struct ReconnectData {
 /// # Ok(()) }
 /// ```
 ///
-/// ⚠️ This struct does **not** retry connections or manage reconnections.
+/// ⚠️ This type does **not** do retries/keepalive; see [`CommandoClient`] if you want managed reconnects.
 pub struct LNSocket {
     channel: PeerChannelEncryptor,
     stream: TcpStream,
@@ -95,6 +95,8 @@ impl LNSocket {
         })
     }
 
+    /// Connect as above and also perform a minimal `init` exchange.
+    /// Fails with `Error::FirstMessageNotInit` if the peer’s first message isn’t `Init`.
     pub async fn connect_and_init(
         our_key: SecretKey,
         their_pubkey: PublicKey,

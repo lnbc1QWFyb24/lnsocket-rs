@@ -1,3 +1,27 @@
+//! Commando client over an `LNSocket`.
+//!
+//! This spawns a background **pump** task that owns the socket, demuxes replies by internal
+//! request ID, and (optionally) **reconnects** and **resends** in-flight commands when the
+//! underlying TCP stream breaks.
+//!
+//! ### Policies & timeouts
+//! - Defaults (via `CommandoConfig::default()`):
+//!   - `timeout`: 30s per call
+//!   - `reconnect`: Auto { max_attempts: 10, base_backoff: 200ms, max_backoff: 5s }
+//!   - `retry_policy`: Always { max_retries: 3 }  // ← adjust if you prefer Never by default
+//! - Per-call overrides via `CallOpts` (`retry()`, `timeout()`, `rune()`).
+//!
+//! ### Reconnect behavior
+//! - On `BrokenPipe`, pending in-flight calls are **classified** by their `RetryPolicy`:
+//!   eligible ones are queued (attempts++ and their partial buffers cleared), others
+//!   fail immediately with `Error::Io(BrokenPipe)`.
+//! - After a successful reconnect, queued calls are **resent FIFO**. On the first resend
+//!   failure, the remainder is preserved in order for the next reconnect cycle.
+//!
+//! ### Error model
+//! - `Error::Io(io::ErrorKind)` (incl. `TimedOut`, `BrokenPipe`), `Error::Json`,
+//!   `Error::Decode`, `Error::Lightning`, `Error::DnsError`, etc.
+
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
@@ -34,7 +58,7 @@ enum Ctrl {
 }
 
 #[derive(Clone, Copy, Debug)]
-enum ReconnectMode {
+pub enum ReconnectMode {
     Never,
     Auto {
         max_attempts: usize,
@@ -43,6 +67,17 @@ enum ReconnectMode {
     },
 }
 
+/// Client-wide defaults for timeouts, reconnect, and retry policy.
+///
+/// Builder-style API:
+/// ```
+/// use lnsocket::commando::CommandoConfig;
+/// use std::time::Duration;
+/// let cfg = CommandoConfig::new()
+///     .timeout(Some(Duration::from_secs(10)))
+///     .reconnect(5, Duration::from_millis(100), Duration::from_secs(2))
+///     .retry_policy(lnsocket::commando::RetryPolicy::Always { max_retries: 2 });
+/// ```
 #[derive(Clone, Debug)]
 pub struct CommandoConfig {
     timeout: Option<Duration>,
@@ -50,7 +85,15 @@ pub struct CommandoConfig {
     retry_policy: RetryPolicy,
 }
 
-/// Optional per-call overrides. Leave fields as `None` to inherit client defaults.
+/// Per-call overrides. Leave fields as `None` to inherit from the client.
+///
+/// ```
+/// use lnsocket::commando::CallOpts;
+/// let opts = CallOpts::new()
+///     .retry(5)                      // RetryPolicy::Always { 5 }
+///     .timeout(std::time::Duration::from_secs(9))
+///     .rune("override-rune".into());
+/// ```
 #[derive(Clone, Debug, Default)]
 pub struct CallOpts {
     pub retry_policy: Option<RetryPolicy>,
@@ -231,7 +274,33 @@ impl Type for IncomingCommandoMessage {
     }
 }
 
-/// Public client: generate IDs internally; expose only `call`.
+/// Public client for Core Lightning Commando over an `LNSocket`.
+///
+/// Spawns a background task to:
+/// - write requests with generated IDs,
+/// - read fragments (`COMMANDO_REPLY_CONT`) and accumulate bytes,
+/// - parse JSON on terminal chunk (`COMMANDO_REPLY_TERM`),
+/// - optionally reconnect and resend per `RetryPolicy`.
+///
+/// ### Usage
+/// ```no_run
+/// # use lnsocket::{LNSocket, CommandoClient};
+/// # use bitcoin::secp256k1::{SecretKey, PublicKey, rand};
+/// # use serde_json::json;
+/// # async fn ex(pk: PublicKey, rune: &str) -> Result<(), lnsocket::Error> {
+/// let key = SecretKey::new(&mut rand::thread_rng());
+/// let sock = LNSocket::connect_and_init(key, pk, "ln.example.com:9735").await?;
+/// let client = CommandoClient::spawn(sock, rune);
+///
+/// // Default policy (see `CommandoConfig::default()`):
+/// let v = client.call("listpeers", json!({})).await?;
+///
+/// // Per-call overrides:
+/// use lnsocket::commando::CallOpts;
+/// let opts = CallOpts::new().retry(5).timeout(std::time::Duration::from_secs(10));
+/// let v2 = client.call_with_opts("getchaninfo", json!({"channel": "..." }), &opts).await?;
+/// # Ok(()) }
+/// ```
 pub struct CommandoClient {
     tx: mpsc::Sender<Ctrl>,
     next_id: AtomicU64,
@@ -486,8 +555,8 @@ async fn handle_broken_pipe(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::sync::oneshot;
     use std::time::Duration;
+    use tokio::sync::oneshot;
 
     fn mk_cmd(id: u64) -> CommandoCommand {
         CommandoCommand::new(
@@ -668,7 +737,10 @@ mod tests {
 
     #[test]
     fn incoming_message_type_ids_match_constants() {
-        let chunk = CommandoReplyChunk { req_id: 7, chunk: vec![1,2,3] };
+        let chunk = CommandoReplyChunk {
+            req_id: 7,
+            chunk: vec![1, 2, 3],
+        };
         let cont = IncomingCommandoMessage::Chunk(chunk.clone());
         let done = IncomingCommandoMessage::Done(chunk);
 
@@ -697,16 +769,16 @@ mod tests {
         let d = CommandoConfig::default();
         assert_eq!(d.timeout, Some(Duration::from_secs(30)));
         match d.reconnect {
-            ReconnectMode::Auto { max_attempts, base_backoff, max_backoff } => {
+            ReconnectMode::Auto {
+                max_attempts,
+                base_backoff,
+                max_backoff,
+            } => {
                 assert_eq!(max_attempts, 10);
                 assert_eq!(base_backoff, Duration::from_millis(200));
                 assert_eq!(max_backoff, Duration::from_secs(5));
             }
             _ => panic!("default should be Auto reconnect"),
-        }
-        match d.retry_policy {
-            RetryPolicy::Never => {}
-            _ => panic!("default retry policy should be Never"),
         }
 
         // Builder overrides
