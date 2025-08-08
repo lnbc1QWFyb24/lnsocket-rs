@@ -1,4 +1,5 @@
 use crate::ln::msgs::{DecodeError, LightningError};
+use serde::Deserialize;
 use std::fmt;
 use std::io;
 use std::net::AddrParseError;
@@ -20,6 +21,13 @@ pub enum Error {
     Lightning(LightningError),
     Decode(DecodeError),
     AddrParse(std::net::AddrParseError),
+    Rpc(RpcError),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RpcError {
+    pub code: i64,
+    pub message: String,
 }
 
 impl fmt::Display for Error {
@@ -32,7 +40,8 @@ impl fmt::Display for Error {
             Error::Lightning(err) => write!(f, "Lightning error: {:?}", err),
             Error::Decode(err) => write!(f, "decoding error: {:?}", err),
             Error::Json => write!(f, "json error"),
-            Error::AddrParse(err) => write!(f, "Address parse error: {}", err),
+            Error::AddrParse(err) => write!(f, "Address parse error: {err}"),
+            Error::Rpc(err) => write!(f, "commando rpc error: {err:?}"),
         }
     }
 }

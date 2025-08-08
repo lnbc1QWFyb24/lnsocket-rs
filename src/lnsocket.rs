@@ -216,10 +216,8 @@ mod tests {
         use std::str::FromStr;
 
         let key = SecretKey::new(&mut rand::thread_rng());
-        let their_key = PublicKey::from_str(
-            "03f3c108ccd536b8526841f0a5c58212bb9e6584a1eb493080e7c1cc34f82dad71",
-        )
-        .unwrap();
+        let pk_str = "03f3c108ccd536b8526841f0a5c58212bb9e6584a1eb493080e7c1cc34f82dad71";
+        let their_key = PublicKey::from_str(pk_str).unwrap();
 
         // Connect as before
         let sock = LNSocket::connect_and_init(key, their_key, "ln.damus.io:9735").await?;
@@ -236,10 +234,19 @@ mod tests {
         let bad_resp_fut = commando.call("invoice", json!({"msatoshi": "any"}));
 
         let resp = resp_fut.await?;
-        let bad_resp = bad_resp_fut.await?;
 
-        println!("{}", serde_json::to_string(&resp).unwrap());
-        println!("{}", serde_json::to_string(&bad_resp).unwrap());
+        assert_eq!(resp["id"].as_str().unwrap(), pk_str);
+
+        let bad_resp = bad_resp_fut.await.err().unwrap();
+        if let Error::Rpc(rpc_err) = bad_resp {
+            assert_eq!(rpc_err.code, 19537);
+            assert_eq!(
+                rpc_err.message,
+                "Invalid rune: Not permitted: method is not equal to getinfo"
+            );
+        } else {
+            assert_eq!(true, false);
+        }
 
         Ok(())
     }

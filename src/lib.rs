@@ -61,7 +61,7 @@ mod util;
 
 pub use bitcoin;
 pub use commando::CommandoClient;
-pub use error::Error;
+pub use error::{Error, RpcError};
 pub use lnsocket::LNSocket;
 
 mod prelude {

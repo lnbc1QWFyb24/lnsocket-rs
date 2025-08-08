@@ -33,6 +33,7 @@ use tokio::time::timeout;
 
 use crate::Error;
 use crate::LNSocket;
+use crate::RpcError;
 use crate::ln::msgs;
 use crate::ln::msgs::DecodeError;
 use crate::ln::wire::{Message, Type};
@@ -422,7 +423,7 @@ async fn pump(mut sock: LNSocket, mut rx: mpsc::Receiver<Ctrl>, cfg: CommandoCon
                         tracing::trace!("pump: [{}] chunk_done {}", chunk.req_id, chunk.chunk.len());
                         if let Some(mut p) = pending.remove(&chunk.req_id) {
                             p.buf.extend_from_slice(&chunk.chunk);
-                            let parsed = serde_json::from_slice::<Value>(&p.buf).map_err(Error::from);
+                            let parsed = parse_commando_response(&p.buf);
                             let _ = p.done_tx.send(parsed);
                         }
                     }
@@ -432,6 +433,25 @@ async fn pump(mut sock: LNSocket, mut rx: mpsc::Receiver<Ctrl>, cfg: CommandoCon
                 }
             }
         }
+    }
+}
+
+fn parse_commando_response(buf: &[u8]) -> Result<Value, Error> {
+    let value = serde_json::from_slice::<Value>(buf).map_err(|_| Error::Json)?;
+    let obj = value.as_object().ok_or(Error::Json)?;
+
+    if let Some(error) = obj.get("error") {
+        let rpc_err: RpcError =
+            serde_json::from_value(error.clone()).unwrap_or_else(|_| RpcError {
+                code: -1,
+                message: serde_json::to_string(error).unwrap(),
+            });
+        return Err(Error::Rpc(rpc_err));
+    }
+
+    match obj.get("result") {
+        None => Err(Error::Json),
+        Some(res) => Ok(res.clone()),
     }
 }
 
