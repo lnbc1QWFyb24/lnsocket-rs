@@ -100,6 +100,7 @@ pub struct CallOpts {
     pub retry_policy: Option<RetryPolicy>,
     pub timeout: Option<Duration>,
     pub rune: Option<String>,
+    pub filter: Option<Value>,
 }
 
 impl CallOpts {
@@ -109,6 +110,11 @@ impl CallOpts {
 
     pub fn retry(mut self, max_retries: usize) -> Self {
         self.retry_policy = Some(RetryPolicy::Always { max_retries });
+        self
+    }
+
+    pub fn filter(mut self, value: Value) -> Self {
+        self.filter = Some(value);
         self
     }
 
@@ -173,12 +179,19 @@ impl Default for CommandoConfig {
 }
 
 impl CommandoCommand {
-    pub fn new(id: u64, method: String, rune: String, params: Value) -> Self {
+    pub fn new(
+        id: u64,
+        method: String,
+        rune: String,
+        params: Value,
+        filter: Option<Value>,
+    ) -> Self {
         Self {
             id,
             method,
             rune,
             params,
+            filter,
         }
     }
     pub fn req_id(&self) -> u64 {
@@ -200,6 +213,7 @@ pub struct CommandoCommand {
     id: u64,
     method: String,
     params: Value,
+    filter: Option<Value>,
     rune: String,
 }
 
@@ -299,7 +313,7 @@ impl Type for IncomingCommandoMessage {
 /// // Per-call overrides:
 /// use lnsocket::commando::CallOpts;
 /// let opts = CallOpts::new().retry(5).timeout(std::time::Duration::from_secs(10));
-/// let v2 = client.call_with_opts("getchaninfo", json!({"channel": "..." }), &opts).await?;
+/// let v2 = client.call_with_opts("getchaninfo", json!({"channel": "..." }), opts).await?;
 /// # Ok(()) }
 /// ```
 pub struct CommandoClient {
@@ -338,7 +352,7 @@ impl CommandoClient {
     }
 
     pub async fn call(&self, method: impl Into<String>, params: Value) -> Result<Value, Error> {
-        self.call_with_opts(method, params, &CallOpts::default())
+        self.call_with_opts(method, params, CallOpts::default())
             .await
     }
 
@@ -346,7 +360,7 @@ impl CommandoClient {
         &self,
         method: impl Into<String>,
         params: Value,
-        opts: &CallOpts,
+        opts: CallOpts,
     ) -> Result<Value, Error> {
         let (done_tx, done_rx) = oneshot::channel();
         let cmd = CommandoCommand::new(
@@ -354,6 +368,7 @@ impl CommandoClient {
             method.into(),
             opts.rune.clone().unwrap_or_else(|| self.rune.clone()),
             params,
+            opts.filter.clone(),
         );
 
         self.tx
@@ -584,6 +599,7 @@ mod tests {
             format!("m{id}"),
             "rune".to_string(),
             serde_json::Value::Null,
+            None,
         )
     }
 
@@ -746,6 +762,7 @@ mod tests {
             "listpeers".to_string(),
             "rune-abc".to_string(),
             serde_json::json!({"id": "0299..."}),
+            None,
         );
 
         assert_eq!(c.req_id(), 42);

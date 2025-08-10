@@ -176,6 +176,7 @@ impl LNSocket {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::CallOpts;
     use crate::ln::msgs;
     use std::str::FromStr;
 
@@ -229,13 +230,20 @@ mod tests {
         );
 
         // New call signature: no socket arg, optional wait timeout
-        let resp_fut = commando.call("getinfo", json!({}));
+        let resp_fut = commando.call_with_opts(
+            "getinfo",
+            json!({}),
+            CallOpts::default().filter(json!({"id": true})),
+        );
 
         let bad_resp_fut = commando.call("invoice", json!({"msatoshi": "any"}));
 
         let resp = resp_fut.await?;
 
         assert_eq!(resp["id"].as_str().unwrap(), pk_str);
+
+        // test filtering
+        assert_eq!(resp.get("alias").is_none(), true);
 
         let bad_resp = bad_resp_fut.await.err().unwrap();
         if let Error::Rpc(rpc_err) = bad_resp {
