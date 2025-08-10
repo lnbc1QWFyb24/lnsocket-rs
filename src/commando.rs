@@ -213,6 +213,7 @@ pub struct CommandoCommand {
     id: u64,
     method: String,
     params: Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
     filter: Option<Value>,
     rune: String,
 }
