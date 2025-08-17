@@ -52,7 +52,7 @@ impl LNSocket {
     /// Resolves the given `addr`, establishes a TCP connection, and performs act1/act2/act3
     /// handshake using `our_key` and the peer’s public key.
     ///
-    /// Does **not** send or expect an `init` message.  
+    /// Does **not** send or expect an `init` message.
     /// Use [`LNSocket::connect_and_init`] if you want handshake + `init` exchange.
     pub async fn connect(
         our_key: SecretKey,
@@ -123,21 +123,20 @@ impl LNSocket {
     /// Fails if the first incoming message isn’t `Init`.
     pub async fn perform_init(&mut self) -> Result<(), Error> {
         // first message should be init, if not, we fail
-        if let Message::Init(_) = self.read().await? {
-            // ok
-        } else {
-            return Err(Error::FirstMessageNotInit);
-        }
-
-        // send some bs
-        Ok(self
-            .write(&msgs::Init {
+        if let Message::Init(init_msg) = self.read().await? {
+            // send some bs
+            self.write(&msgs::Init {
                 features: vec![0; 5],
                 global_features: vec![0; 2],
                 remote_network_address: None,
-                networks: Some(vec![bitcoin::constants::ChainHash::BITCOIN]),
+                networks: init_msg.networks,
             })
-            .await?)
+            .await?;
+
+            Ok(())
+        } else {
+            Err(Error::FirstMessageNotInit)
+        }
     }
 
     pub async fn write<M: wire::Type + Writeable>(&mut self, m: &M) -> Result<(), io::Error> {
