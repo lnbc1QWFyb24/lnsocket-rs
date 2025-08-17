@@ -52,7 +52,7 @@ impl LNSocket {
     /// Resolves the given `addr`, establishes a TCP connection, and performs act1/act2/act3
     /// handshake using `our_key` and the peer’s public key.
     ///
-    /// Does **not** send or expect an `init` message.
+    /// Does **not** send or expect an `init` message.  
     /// Use [`LNSocket::connect_and_init`] if you want handshake + `init` exchange.
     pub async fn connect(
         our_key: SecretKey,
