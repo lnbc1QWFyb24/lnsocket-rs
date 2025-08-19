@@ -382,7 +382,7 @@ impl CommandoClient {
             .map_err(|_| Error::Io(std::io::ErrorKind::BrokenPipe))?;
 
         match self.config.timeout {
-            Some(d) => timeout(d, async { done_rx.await })
+            Some(d) => timeout(d, done_rx)
                 .await
                 .map_err(|_| Error::Io(std::io::ErrorKind::TimedOut))?
                 .map_err(|_| Error::Io(std::io::ErrorKind::BrokenPipe))?,

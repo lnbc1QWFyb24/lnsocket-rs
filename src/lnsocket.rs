@@ -88,7 +88,7 @@ impl LNSocket {
             channel,
             stream,
             reconnect: ReconnectData {
-                our_key: our_key.clone(),
+                our_key,
                 their_pubkey,
                 addr: addr.to_string(),
             },
@@ -110,7 +110,7 @@ impl LNSocket {
     /// Build a brand-new socket using the stored reconnect inputs.
     pub async fn reconnect_fresh(&self) -> Result<LNSocket, Error> {
         LNSocket::connect_and_init(
-            self.reconnect.our_key.clone(),
+            self.reconnect.our_key,
             self.reconnect.their_pubkey,
             &self.reconnect.addr,
         )
