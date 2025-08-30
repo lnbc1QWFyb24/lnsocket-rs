@@ -5,12 +5,17 @@ use crate::{
         peer_channel_encryptor::PeerChannelEncryptor,
         wire::{self, Message},
     },
+    proxy::{LnStream, TorConfig},
+    socket_addr::SocketAddress,
     util::ser::Writeable,
 };
 use bitcoin::secp256k1::{PublicKey, Secp256k1, SecretKey, rand};
 use std::io::{self, Cursor};
+use std::net::ToSocketAddrs;
+use std::str::FromStr;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpSocket, TcpStream, lookup_host};
+use tokio::net::TcpSocket;
+use tokio_socks::tcp::Socks5Stream;
 
 const ACT_TWO_SIZE: usize = 50;
 
@@ -42,7 +47,7 @@ struct ReconnectData {
 /// ⚠️ This type does **not** do retries/keepalive; see [`CommandoClient`] if you want managed reconnects.
 pub struct LNSocket {
     channel: PeerChannelEncryptor,
-    stream: TcpStream,
+    stream: LnStream,
     reconnect: ReconnectData,
 }
 
@@ -50,27 +55,66 @@ impl LNSocket {
     /// Connect to a Lightning peer and complete the BOLT 8 Noise handshake.
     ///
     /// Resolves the given `addr`, establishes a TCP connection, and performs act1/act2/act3
-    /// handshake using `our_key` and the peer’s public key.
+    /// handshake using `our_key` and the peer's public key.
     ///
-    /// Does **not** send or expect an `init` message.  
+    /// Does **not** send or expect an `init` message.
     /// Use [`LNSocket::connect_and_init`] if you want handshake + `init` exchange.
     pub async fn connect(
         our_key: SecretKey,
         their_pubkey: PublicKey,
         addr: &str,
     ) -> Result<LNSocket, Error> {
+        Self::connect_with_tor_config(our_key, their_pubkey, addr, None).await
+    }
+
+    /// Connect to a Lightning peer with optional TOR proxy configuration.
+    ///
+    /// Resolves the given `addr`, establishes a TCP connection, and performs act1/act2/act3
+    /// handshake using `our_key` and the peer's public key.
+    ///
+    /// For .onion addresses, uses the provided `tor_config` or defaults to localhost:9050.
+    /// For clearnet addresses, ignores the `tor_config` and connects directly.
+    ///
+    /// Does **not** send or expect an `init` message.
+    /// Use [`LNSocket::connect_and_init_with_tor_config`] if you want handshake + `init` exchange.
+    pub async fn connect_with_tor_config(
+        our_key: SecretKey,
+        their_pubkey: PublicKey,
+        addr: &str,
+        tor_config: Option<TorConfig>,
+    ) -> Result<LNSocket, Error> {
         let secp_ctx = Secp256k1::signing_only();
 
-        // Look up host to resolve domain name to IP address
-        let addr = lookup_host(addr).await?.next().ok_or(Error::DnsError)?;
+        // Parse the address string into a structured SocketAddress
+        let socket_addr = SocketAddress::from_str(addr)?;
 
-        let socket = if addr.is_ipv4() {
-            TcpSocket::new_v4()?
-        } else {
-            TcpSocket::new_v6()?
+        let mut stream = match &socket_addr {
+            SocketAddress::OnionV2(_) | SocketAddress::OnionV3 { .. } => {
+                // Onion addresses require TOR proxy
+                let tor_config = tor_config.unwrap_or_default();
+                let proxy_addr = tor_config.proxy_addr();
+                let stream = Socks5Stream::connect(proxy_addr.as_str(), addr)
+                    .await
+                    .map_err(|e| Error::ProxyConnection(e.to_string()))?;
+                LnStream::Tor(stream)
+            }
+            _ => {
+                // Direct connection for non-onion addresses
+                let sock_addrs: Vec<std::net::SocketAddr> = socket_addr
+                    .to_socket_addrs()
+                    .map_err(|_| Error::DnsError)?
+                    .collect();
+
+                let sock_addr = sock_addrs.first().ok_or(Error::DnsError)?;
+                let socket = if sock_addr.is_ipv4() {
+                    TcpSocket::new_v4()?
+                } else {
+                    TcpSocket::new_v6()?
+                };
+                LnStream::Direct(socket.connect(*sock_addr).await?)
+            }
         };
 
-        let mut stream = socket.connect(addr).await?;
         let ephemeral = SecretKey::new(&mut rand::thread_rng());
 
         let mut channel = PeerChannelEncryptor::new_outbound(their_pubkey, ephemeral);
@@ -96,13 +140,25 @@ impl LNSocket {
     }
 
     /// Connect as above and also perform a minimal `init` exchange.
-    /// Fails with `Error::FirstMessageNotInit` if the peer’s first message isn’t `Init`.
+    /// Fails with `Error::FirstMessageNotInit` if the peer's first message isn't `Init`.
     pub async fn connect_and_init(
         our_key: SecretKey,
         their_pubkey: PublicKey,
         addr: &str,
     ) -> Result<LNSocket, Error> {
-        let mut lnsocket = LNSocket::connect(our_key, their_pubkey, addr).await?;
+        Self::connect_and_init_with_tor_config(our_key, their_pubkey, addr, None).await
+    }
+
+    /// Connect with optional TOR proxy configuration and perform a minimal `init` exchange.
+    /// Fails with `Error::FirstMessageNotInit` if the peer's first message isn't `Init`.
+    pub async fn connect_and_init_with_tor_config(
+        our_key: SecretKey,
+        their_pubkey: PublicKey,
+        addr: &str,
+        tor_config: Option<TorConfig>,
+    ) -> Result<LNSocket, Error> {
+        let mut lnsocket =
+            LNSocket::connect_with_tor_config(our_key, their_pubkey, addr, tor_config).await?;
         lnsocket.perform_init().await?;
         Ok(lnsocket)
     }

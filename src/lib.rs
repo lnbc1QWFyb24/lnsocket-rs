@@ -55,6 +55,7 @@ mod crypto;
 pub mod error;
 pub mod ln;
 pub mod lnsocket;
+pub mod proxy;
 mod sign;
 mod socket_addr;
 mod util;
@@ -63,6 +64,7 @@ pub use bitcoin;
 pub use commando::{CallOpts, CommandoClient};
 pub use error::{Error, RpcError};
 pub use lnsocket::LNSocket;
+pub use proxy::TorConfig;
 
 mod prelude {
     #![allow(unused_imports)]

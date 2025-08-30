@@ -1,8 +1,8 @@
 use crate::ln::msgs::{DecodeError, LightningError};
+use crate::socket_addr::SocketAddressParseError;
 use serde::Deserialize;
 use std::fmt;
 use std::io;
-use std::net::AddrParseError;
 
 /// Errors surfaced by this crate.
 ///
@@ -20,8 +20,9 @@ pub enum Error {
     Json,
     Lightning(LightningError),
     Decode(DecodeError),
-    AddrParse(std::net::AddrParseError),
+    AddrParse(SocketAddressParseError),
     Rpc(RpcError),
+    ProxyConnection(String),
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -42,6 +43,7 @@ impl fmt::Display for Error {
             Error::Json => write!(f, "json error"),
             Error::AddrParse(err) => write!(f, "Address parse error: {err}"),
             Error::Rpc(err) => write!(f, "commando rpc error: {err:?}"),
+            Error::ProxyConnection(msg) => write!(f, "TOR connection error: {msg}"),
         }
     }
 }
@@ -70,8 +72,8 @@ impl From<LightningError> for Error {
     }
 }
 
-impl From<AddrParseError> for Error {
-    fn from(err: AddrParseError) -> Self {
+impl From<SocketAddressParseError> for Error {
+    fn from(err: SocketAddressParseError) -> Self {
         Self::AddrParse(err)
     }
 }

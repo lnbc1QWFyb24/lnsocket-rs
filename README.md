@@ -9,6 +9,7 @@ lnsocket also comes batteries included with Commando support, allowing you to ca
 - [x] Establish encrypted connections to Lightning Network nodes with Noise_XK handshake protocol
 - [x] Send and receive Lightning Network messages
 - [x] Support for Commando CLN RPC messages
+- [x] TOR connections for .onion addresses with automatic detection
 
 ## Usage
 
@@ -17,6 +18,52 @@ Add to your `Cargo.toml`:
 ```toml
 [dependencies]
 lnsocket = "0.1.0"
+```
+
+## TOR Support
+
+lnsocket-rs automatically detects and connects to `.onion` addresses via TOR, providing support for hidden services.
+
+### Default Configuration
+
+- **Default SOCKS proxy**: `127.0.0.1:9050` (standard TOR proxy address)
+- The library automatically detects `.onion` addresses and routes through TOR
+
+### Basic Usage
+
+```rust
+use bitcoin::secp256k1::{SecretKey, PublicKey, rand};
+use lnsocket::LNSocket;
+
+async fn connect_onion() -> Result<(), lnsocket::Error> {
+    let key = SecretKey::new(&mut rand::thread_rng());
+    let pk = PublicKey::from_str("03...")?.unwrap();
+
+    // Onion addresses automatically use TOR (127.0.0.1:9050)
+    let mut sock = LNSocket::connect_and_init(key, pk, "node.onion:9735").await?;
+
+    // Use the socket normally - TOR is handled transparently
+    Ok(())
+}
+```
+
+### Custom TOR Proxy Configuration
+
+```rust
+use lnsocket::{LNSocket, TorConfig};
+
+async fn connect_custom_proxy() -> Result<(), lnsocket::Error> {
+    let key = SecretKey::new(&mut rand::thread_rng());
+    let pk = PublicKey::from_str("03...")?.unwrap();
+
+    // Custom TOR proxy (e.g., different port or remote proxy)
+    let tor_config = TorConfig::new("127.0.0.1".to_string(), 9150);
+    let mut sock = LNSocket::connect_and_init_with_tor_config(
+        key, pk, "node.onion:9735", Some(tor_config)
+    ).await?;
+
+    Ok(())
+}
 ```
 
 ## Commando over LNSocket
